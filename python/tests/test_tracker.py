@@ -53,7 +53,9 @@ def test_recent_path_is_capped():
 
     track = run(frames)[-1][0]
 
-    assert 0 < len(track.path) < 200
+    # Only frames 170..199 remain: centers x = 2f + 10.
+    assert len(track.path) == 30
+    assert track.path[0] == (350.0, 60.0)
     assert track.path[-1] == (408.0, 60.0)
 
 

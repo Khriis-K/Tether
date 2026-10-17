@@ -7,6 +7,10 @@ from tether.formats import Box
 
 MIN_IOU = 0.3  # pairs that overlap less than this are never matched
 
+# Cost of a pair that can't match. It exceeds any total of valid costs (each is
+# at most 1), so the solver first maximizes the number of valid pairs.
+_INVALID_COST = 1e6
+
 
 def iou(a: Box, b: Box) -> float:
     inter_w = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
@@ -20,17 +24,18 @@ def match(track_boxes: list[Box], det_boxes: list[Box],
           allowed: np.ndarray | None = None) -> list[tuple[int, int]]:
     """Best one-to-one pairing of tracks to detections, as (track, detection) index pairs.
 
-    Minimizes total (1 - IoU) over the whole grid, then drops pairs below MIN_IOU.
-    `allowed` is an optional boolean grid; False pairs are never matched.
-    Result is sorted by track index.
+    A pair is valid when its IoU is at least MIN_IOU and `allowed` (an optional
+    boolean grid) permits it. Returns the assignment with the most valid pairs,
+    and among those the lowest total (1 - IoU). Result is sorted by track index.
     """
     if not track_boxes or not det_boxes:
         return []
     ious = np.array([[iou(t, d) for d in det_boxes] for t in track_boxes])
+    valid = ious >= MIN_IOU
     if allowed is not None:
-        ious = np.where(allowed, ious, 0.0)
-    rows, cols = linear_sum_assignment(1.0 - ious)
-    return [(int(r), int(c)) for r, c in zip(rows, cols) if ious[r, c] >= MIN_IOU]
+        valid &= allowed
+    rows, cols = linear_sum_assignment(np.where(valid, 1.0 - ious, _INVALID_COST))
+    return [(int(r), int(c)) for r, c in zip(rows, cols) if valid[r, c]]
 
 
 def _area(box: Box) -> float:

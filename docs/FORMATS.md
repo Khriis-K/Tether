@@ -36,7 +36,17 @@ Tracks in each frame are sorted by `id`.
 | `status` | `"tentative"`, `"tracked"` or `"searching"` | Lifecycle state. Removed tracks are left out. |
 | `predicted_box` | 4 numbers | Where the tracker expects the object in the next frame |
 | `frames_since_seen` | integer | Frames since the track last matched a detection (0 means it matched this frame) |
-| `path` | list of `[x, y]` | Recent box centers for trails, oldest first, capped in length |
+| `path` | list of `[x, y]` | Box centers from the last 30 matched frames, oldest first |
+
+## Matching rules
+
+Both trackers must follow these rules exactly, or their IDs will drift apart.
+
+- **Rows and columns.** Tracks are the rows, in ID order. Detections are the columns, in file order.
+- **Valid pairs.** A track and a detection can match only if they have the same `class` and their IoU is at least 0.3.
+- **Assignment.** Pick the one-to-one pairing with the most valid pairs. Among those, pick the one with the lowest total `1 − IoU`. In practice: give invalid cells a cost of 1e6, which is more than any total of valid costs, run Hungarian, and then drop the invalid pairs it chose.
+- **Ties.** When two different assignments have exactly the same cost, the solver decides. Python uses SciPy's `linear_sum_assignment` (Crouse's shortest augmenting path). The C++ port must use the same algorithm over the same row and column order, so it breaks ties the same way. Exact ties need bit-equal float costs, so they mostly happen in symmetric, scripted scenes.
+- **New tracks.** Unmatched detections start new tracks in file order and take the next unused ID.
 
 ## Determinism
 
