@@ -71,6 +71,16 @@ Matching each new detection against where a track is **predicted** to be now, no
 
 **In Tether:** one motion model handles both fast motion and occlusion. In both cases the answer is "trust the prediction."
 
+### Process noise (how fast the filter adapts)
+The Kalman filter's **process noise** says how much the true motion may change between frames that the constant-velocity model can't explain. Low process noise means "trust the model": smooth, but slow to notice the object speeding up. High process noise means "trust the detections": it reacts fast, but it's jumpier.
+
+**Gotcha:** trackers built for walking pedestrians use very low velocity noise. Applied to something that speeds up quickly, the prediction lags behind the object, the predicted box stops overlapping the detection, and the ID is lost.
+
+**In Tether:** velocity noise is `1/10` of the box height per frame. `1/160`, the usual pedestrian value, failed the speed-up test. See `docs/adr/0001-center-distance-fallback-for-new-tracks.md`.
+
+### Center-distance fallback
+When boxes don't overlap, IoU is 0 whether they're near or far, so it can't pick between them. Center distance can. In Tether it is used only for tracks seen once, which have no velocity yet: a second matching pass by the distance between box centers, measured in box sizes and capped.
+
 ---
 
 ## Evaluation
