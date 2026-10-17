@@ -1,0 +1,98 @@
+from tether.formats import Detection
+from tether.tracker import Tracker
+
+
+def moving_box(frame, start_x=0.0, speed=2.0, y=50.0, size=20.0):
+    x = start_x + speed * frame
+    return (x, y, x + size, y + size)
+
+
+def run(frames):
+    tracker = Tracker()
+    return [tracker.update(dets) for dets in frames]
+
+
+def test_steadily_moving_object_keeps_the_same_id_every_frame():
+    frames = [[Detection(box=moving_box(f), score=0.9, cls=0)] for f in range(50)]
+
+    outputs = run(frames)
+
+    ids = [[t.id for t in tracks] for tracks in outputs]
+    assert ids == [[ids[0][0]]] * 50
+
+
+def test_track_reports_box_class_status_and_frames_since_seen():
+    tracks = run([[Detection(box=(10.0, 20.0, 30.0, 40.0), score=0.9, cls=3)]])[0]
+
+    assert len(tracks) == 1
+    track = tracks[0]
+    assert track.box == (10.0, 20.0, 30.0, 40.0)
+    assert track.cls == 3
+    assert track.status == "tracked"
+    assert track.frames_since_seen == 0
+
+
+def test_track_box_follows_the_matched_detection():
+    frames = [[Detection(box=moving_box(f), score=0.9, cls=0)] for f in range(3)]
+
+    outputs = run(frames)
+
+    assert [tracks[0].box for tracks in outputs] == [moving_box(f) for f in range(3)]
+
+
+def test_recent_path_holds_box_centers_oldest_first():
+    frames = [[Detection(box=moving_box(f), score=0.9, cls=0)] for f in range(3)]
+
+    track = run(frames)[-1][0]
+
+    assert track.path == ((10.0, 60.0), (12.0, 60.0), (14.0, 60.0))
+
+
+def test_recent_path_is_capped():
+    frames = [[Detection(box=moving_box(f), score=0.9, cls=0)] for f in range(200)]
+
+    track = run(frames)[-1][0]
+
+    assert 0 < len(track.path) < 200
+    assert track.path[-1] == (408.0, 60.0)
+
+
+def test_two_separate_objects_get_distinct_stable_ids():
+    frames = [
+        [
+            Detection(box=moving_box(f, start_x=0.0), score=0.9, cls=0),
+            Detection(box=moving_box(f, start_x=300.0), score=0.9, cls=0),
+        ]
+        for f in range(10)
+    ]
+
+    outputs = run(frames)
+
+    first_ids = [t.id for t in outputs[0]]
+    assert len(set(first_ids)) == 2
+    for tracks in outputs:
+        assert [t.id for t in tracks] == first_ids
+
+
+def test_detections_of_different_classes_do_not_match():
+    frames = [
+        [Detection(box=(0.0, 0.0, 10.0, 10.0), score=0.9, cls=0)],
+        [Detection(box=(0.0, 0.0, 10.0, 10.0), score=0.9, cls=1)],
+    ]
+
+    outputs = run(frames)
+
+    assert outputs[0][0].id != outputs[1][0].id
+
+
+def test_new_object_gets_a_new_id_that_is_never_reused():
+    frames = [
+        [Detection(box=(0.0, 0.0, 10.0, 10.0), score=0.9, cls=0)],
+        [],
+        [Detection(box=(0.0, 0.0, 10.0, 10.0), score=0.9, cls=0)],
+    ]
+
+    outputs = run(frames)
+
+    assert outputs[1] == []
+    assert outputs[2][0].id != outputs[0][0].id
