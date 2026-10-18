@@ -100,6 +100,25 @@ def test_new_object_gets_a_new_id_that_is_never_reused():
     assert outputs[2][0].id != outputs[0][0].id
 
 
+def test_confirmed_track_gets_a_detection_before_a_tentative_track_that_overlaps_it_more():
+    confirmed_box = (0.0, 0.0, 20.0, 20.0)
+    tentative_box = (10.0, 0.0, 30.0, 20.0)
+    shared = (8.0, 0.0, 28.0, 20.0)  # IoU 0.43 with the confirmed track, 0.82 with the tentative one
+    frames = [
+        [Detection(box=confirmed_box, score=0.9, cls=0)],
+        [Detection(box=confirmed_box, score=0.9, cls=0)],
+        [Detection(box=confirmed_box, score=0.9, cls=0),
+         Detection(box=tentative_box, score=0.9, cls=0)],
+        [Detection(box=shared, score=0.9, cls=0)],
+    ]
+
+    outputs = run(frames)
+
+    confirmed = next(t for t in outputs[2] if t.box == confirmed_box)
+    assert confirmed.status == "tracked"
+    assert [(t.id, t.status, t.box) for t in outputs[3]] == [(confirmed.id, "tracked", shared)]
+
+
 def test_detections_below_the_score_threshold_are_ignored():
     tracker = Tracker(min_score=0.5)
 
