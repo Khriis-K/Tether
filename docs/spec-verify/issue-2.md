@@ -43,13 +43,29 @@ Result: VERIFIED
 
 ### Criterion C6: tests check behavior from the outside, not internal filter values
 Not a code behavior, so no mutation exists for it. Evidence for review: `test_motion.py` imports only `Detection` and `Tracker`; nothing imports `tether.kalman`. `test_matching.py` tests `matching`'s public functions, as before.
-Result: [UNVALIDATABLE: a property of the tests themselves; needs a human read]
+Result: [HUMAN-VERIFIED: Christopher Kuizon, 2026-10-17 — read the tests and signed off in review]
 
 ### Criterion C7: output stays deterministic
 Given the same detection file When the CLI runs twice Then the output bytes are identical.
 
 Test: python/tests/test_cli.py::test_same_input_run_twice_gives_byte_identical_output
 Mutation: kalman.py, seed new tracks' velocity with unseeded `np.random.normal` noise.
+Result: VERIFIED
+
+### Criterion C8: two objects crossing paths don't swap IDs (SPEC.md Testing)
+Given two fast objects in one lane moving toward each other When they pass through each other Then each keeps its ID.
+
+Test: python/tests/test_motion.py::test_fast_objects_crossing_paths_do_not_swap_ids
+Mutation a: tracker.py, IoU matching uses each track's last seen box.
+Result: VERIFIED
+Mutation b: tracker.py, drop the per-frame `motion.predict()` loop.
+Result: VERIFIED
+
+### Criterion C9: a box that shrinks sharply once keeps its ID (code review finding)
+Given a 40 px box then 12 px boxes at the same center When the tracker runs Then one ID, and every predicted box is a real (not inside-out) box.
+
+Test: python/tests/test_motion.py::test_object_whose_box_shrinks_sharply_keeps_its_id
+Mutation: kalman.py, size velocity gets the same noise as center velocity.
 Result: VERIFIED
 
 ### Decision D1: the fallback applies only to once-seen tracks
@@ -71,5 +87,5 @@ Mutation: matching.py, box size taken from the smaller side.
 Result: VERIFIED
 
 ## Verification results
-9/10 criteria VERIFIED or HUMAN-VERIFIED.
-Remaining: C6 (UNVALIDATABLE, needs human sign-off).
+12/12 criteria VERIFIED or HUMAN-VERIFIED.
+Remaining: none.

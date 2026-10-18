@@ -61,6 +61,46 @@ def test_fast_objects_moving_toward_each_other_keep_their_ids():
     assert by_lane == [by_lane[0]] * 12
 
 
+def test_fast_objects_crossing_paths_do_not_swap_ids():
+    # Same lane (4 px apart in y), 30 px/frame each way; they pass through
+    # each other around frame 10, so mid-crossing both detections overlap
+    # both predictions.
+    def rightward(f):
+        return box_at(30.0 * f, y=50.0)
+
+    def leftward(f):
+        return box_at(600.0 - 30.0 * f, y=54.0)
+
+    tracker = Tracker()
+    outputs = [tracker.update([Detection(box=rightward(f), score=0.9, cls=0),
+                               Detection(box=leftward(f), score=0.9, cls=0)])
+               for f in range(20)]
+
+    ids_by_object = [({t.box: t.id for t in tracks}[rightward(f)],
+                      {t.box: t.id for t in tracks}[leftward(f)])
+                     for f, tracks in enumerate(outputs)]
+    assert ids_by_object[0][0] != ids_by_object[0][1]
+    assert ids_by_object == [ids_by_object[0]] * 20
+
+
+def test_object_whose_box_shrinks_sharply_keeps_its_id():
+    # 40 px box, then a 12 px box at the same center (e.g. the detector now
+    # sees only part of it). One shrink is not a shrink rate: the predicted
+    # box must stay a real box near the object.
+    def centered(size):
+        return (100.0 - size / 2, 100.0 - size / 2, 100.0 + size / 2, 100.0 + size / 2)
+
+    tracker = Tracker()
+    outputs = [tracker.update([Detection(box=centered(s), score=0.9, cls=0)])
+               for s in [40.0] + [12.0] * 5]
+
+    ids = single_ids(outputs)
+    assert ids == [[ids[0][0]]] * 6
+    for tracks in outputs:
+        x1, y1, x2, y2 = tracks[0].predicted_box
+        assert x2 > x1 and y2 > y1
+
+
 def test_far_away_detection_after_a_new_track_gets_a_new_id():
     outputs = run([0.0, 500.0])
 
