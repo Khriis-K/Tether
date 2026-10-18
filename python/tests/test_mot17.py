@@ -243,3 +243,28 @@ def test_each_detector_gets_its_own_saved_detections(tmp_path, mot17_dir):
     evaluate(mot17_dir, work, TETHER, "tether", detector, detector_name="yolo26s")
 
     assert detector.calls == 2 * N_FRAMES  # both sequences detected afresh
+
+
+def test_results_name_the_detection_set(tmp_path, mot17_dir):
+    results = evaluate(mot17_dir, tmp_path / "work", TETHER, "tether", GroundTruthDetector(),
+                       detector_name="yolo26n_1280x736")
+
+    assert results["detections"] == "yolo26n_1280x736"
+
+
+def test_recall_and_precision_ignore_boxes_on_static_people(tmp_path, gt_dir):
+    # A static person (class 7) stands at (100, 150) in SEQ-A. The official rule drops
+    # boxes that match one, rather than counting them as false alarms.
+    static = (100.0, 150.0, 130.0, 210.0)
+    with open(gt_dir / "SEQ-A" / "gt" / "gt.txt", "a", encoding="utf-8") as f:
+        f.writelines(f"{i + 1},3,100,150,30,60,0,7,1.0\n" for i in range(N_FRAMES))
+    found_one = [[track(1, person_box(PEOPLE[1], f)), track(2, static)]
+                 + ([track(3, (300.0, 0.0, 320.0, 50.0))] if f < 5 else [])  # a false alarm in 5 frames
+                 for f in range(N_FRAMES)]
+    trackers = tmp_path / "trackers"
+    write_tracker(trackers, "t", "SEQ-A", found_one)
+
+    results = score(gt_dir, trackers, "t", ["SEQ-A"])
+
+    assert results["sequences"]["SEQ-A"]["Recall"] == pytest.approx(100 * 10 / 20)
+    assert results["sequences"]["SEQ-A"]["Precision"] == pytest.approx(100 * 10 / 15)

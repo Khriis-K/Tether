@@ -51,7 +51,9 @@ def save_mot_results(path: str | Path, frames: list[list[Track]], cls: int) -> N
 def score(gt_dir: Path, trackers_dir: Path, tracker: str, sequences: list[str]) -> dict:
     """Score `trackers_dir/tracker/data/<sequence>.txt` against `gt_dir/<sequence>/gt/gt.txt`.
 
-    HOTA and IDF1 are percentages; IDSW is a count. "combined" is TrackEval's
+    HOTA, IDF1, Recall and Precision are percentages; IDSW is a count. Recall and
+    precision count a box as found at IoU 0.5, after MOT17's rule drops boxes on
+    static people, distractors and reflections. "combined" is TrackEval's
     score over all sequences together, not an average of the per-sequence ones.
     """
     import trackeval  # only needed here, and slow to import
@@ -75,7 +77,9 @@ def score(gt_dir: Path, trackers_dir: Path, tracker: str, sequences: list[str]) 
         r = per_seq[seq]["pedestrian"]
         return {"HOTA": 100 * float(np.mean(r["HOTA"]["HOTA"])),  # averaged over IoU thresholds
                 "IDF1": 100 * float(r["Identity"]["IDF1"]),
-                "IDSW": int(r["CLEAR"]["IDSW"])}
+                "IDSW": int(r["CLEAR"]["IDSW"]),
+                "Recall": 100 * float(r["CLEAR"]["CLR_Re"]),  # at IoU 0.5
+                "Precision": 100 * float(r["CLEAR"]["CLR_Pr"])}
 
     return {"sequences": {seq: summary(seq) for seq in sequences}, "combined": summary("COMBINED_SEQ")}
 
@@ -114,7 +118,7 @@ def evaluate(mot17_dir: str | Path, work_dir: str | Path, tracker_cmd: str, name
             raise ValueError(f"{tracks}: {len(track_frames)} frames, but {dets} has {len(det_frames)}")
         save_mot_results(out_dir / "data" / f"{seq}.txt", track_frames, cls=PERSON)
 
-    results = {"tracker": name, **score(gt_dir, trackers_dir, name, sequences)}
+    results = {"tracker": name, "detections": detector_name, **score(gt_dir, trackers_dir, name, sequences)}
     results_file = out_dir / "results.json"
     results_file.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     print(f"saved to {results_file}")

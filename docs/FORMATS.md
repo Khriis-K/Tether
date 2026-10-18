@@ -38,6 +38,8 @@ Tracks in each frame are sorted by `id`.
 | `frames_since_seen` | integer | Frames since the track last matched a detection (0 means it matched this frame) |
 | `path` | list of `[x, y]` | Box centers from the last 30 matched frames, oldest first |
 
+`tether-bytetrack` writes the same format, but ByteTrack reports only tracks matched this frame and keeps no history: every track is `"tracked"`, `box` is ByteTrack's Kalman-filtered box, `predicted_box` repeats it, `frames_since_seen` is 0 and `path` is empty. Only `id`, `box`, `class` and `status` are meaningful there, which is all MOT scoring reads.
+
 ## MOT results file
 
 `tether-mot17` converts each track file to the [MOT Challenge](https://motchallenge.net/) results format so TrackEval can score it. It's not JSON: one CSV row per track per frame, one file per video.

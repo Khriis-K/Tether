@@ -45,3 +45,16 @@ Scored with the official MOT17 rule (detections matched to static-person, person
 - **Why the shape matters is only partly understood.** Where the padding falls on the stride-32 grid explains about half the gap on 02 and none of it on 04. A model trained on square letterboxed images may simply be slightly off on a wide canvas; that's untested.
 - **The comparison in #7 stays fair either way:** both trackers read the same detection set. Only the absolute HOTA/MOTA move.
 - Timing was one run on one machine (ONNX Runtime CPU, prep + inference + decode, median of 300 frames); the ratio matches the pixel ratio (0.575×) and should carry over better than the milliseconds.
+
+## Update (2026-10-18): all 7 videos confirm it
+
+#7 dumped YOLO26n at 1280×736 for all 7 train videos. Scored the same way (official rule, score ≥ 0.25, `tools/detector_recall.py`):
+
+| Detections | Recall, all 7 | Precision, all 7 |
+|---|---|---|
+| n @ 640 (shipped) | 33.7% | 85.4% |
+| **n @ 1280×736** | **54.6%** | **84.3%** |
+
+- **The decision holds.** Recall goes up by 21 points at the same precision. The 2-video numbers above carry over (02 and 04 match to 0.1 point).
+- **The gain is uneven.** It's 13–33 points on 02, 04, 10 and 13, and 2–6 points on 05, 09 and 11. MOT17-05 is a 640×480 video, so 640 input already sees it at full size.
+- Per-video numbers are in `docs/benchmarks/mot17-bytetrack.md`, along with the tracker comparison: ByteTrack leads Tether by about 5 HOTA on both detection sets, and almost none of that comes from low-score detections, so the low-score question in Consequences is answered: not worth an issue on its own.
