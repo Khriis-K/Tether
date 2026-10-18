@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 import cv2
@@ -103,8 +104,9 @@ def main(argv: list[str] | None = None) -> int:
             timing_log = Path(args.timing or f"results/timing-{datetime.now():%Y%m%d-%H%M%S}.jsonl")
             timing_log.parent.mkdir(parents=True, exist_ok=True)
             print(f"logging timing to {timing_log}")
-            save_timings(timing_log, timed_tracking(video.frames(args.source), prepare, detect.detect, Tracker(),
-                                                show_frame, clock_ms))
+            prepare_frame = partial(prepare, input_size=detect.input_size)
+            save_timings(timing_log, timed_tracking(video.frames(args.source), prepare_frame, detect.detect,
+                                                Tracker(), show_frame, clock_ms))
     except KeyboardInterrupt:
         pass  # Ctrl-C ends a webcam run; frames written so far make a valid detection file or timing log
     finally:
