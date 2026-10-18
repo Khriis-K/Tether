@@ -21,8 +21,8 @@ import tempfile
 from pathlib import Path
 
 MODELS = Path(__file__).resolve().parent.parent / "models"
-MODEL_SIZES = ("n", "s", "m", "l", "x")
-SHIPPED = ("n", (640, 640))  # model size, (height, width)
+MODEL_VARIANTS = ("n", "s", "m")
+SHIPPED = ("n", (640, 640))  # model variant, (height, width)
 STRIDE = 32
 
 
@@ -41,14 +41,14 @@ def parse_size(text: str) -> tuple[int, int]:
 def output_name(model: str, size: tuple[int, int]) -> str:
     """yolo26n.onnx for the shipped model, else e.g. yolo26n_1280x736.onnx (width x height)."""
     if (model, size) == SHIPPED:
-        return "yolo26n.onnx"
+        return f"yolo26{model}.onnx"
     h, w = size
     return f"yolo26{model}_{w}x{h}.onnx"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export a pretrained YOLO26 model to ONNX in models/.")
-    parser.add_argument("--model", choices=MODEL_SIZES, default=SHIPPED[0], help="model size (default n)")
+    parser.add_argument("--model", choices=MODEL_VARIANTS, default=SHIPPED[0], help="model variant (default n)")
     parser.add_argument("--size", type=parse_size, default=SHIPPED[1],
                         help="input size as WIDTHxHEIGHT, or one number for a square (default 640)")
     return parser.parse_args(argv)
