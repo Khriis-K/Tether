@@ -2,11 +2,11 @@
 
 The first MOT17 run (#6) scored HOTA 27.8. The tracker's recall (32.1%) sat right at the detector's own ceiling (about 34%): YOLO26n at 640 input missed two-thirds of the people, almost all of the ones under 100 px tall. MOT17 frames are 1920×1080, so letterboxing to 640 shrinks people 3×. With that few people reaching the trackers, a Tether-vs-ByteTrack gap (#7) would say little, and it would tilt toward ByteTrack, whose second matching pass uses the low-score detections a weak detector produces.
 
-**Decision:** #7 headlines detections from **YOLO26n at 1280 input**, and also reports a second row on the **shipped detector (YOLO26n at 640)**. The benchmark detection set and the shipped detector are separate choices: detections are dumped to a file once, so detector speed doesn't affect the benchmark. The shipped detector stays YOLO26n at 640 until #18 measures speed and accuracy together on TensorRT.
+**Decision:** #7 headlines detections from **YOLO26n at 1280 input** (as a 1280×736 rectangle, see the update below), and also reports a second row on the **shipped detector (YOLO26n at 640)**. The benchmark detection set and the shipped detector are separate choices: detections are dumped to a file once, so detector speed doesn't affect the benchmark. The shipped detector stays YOLO26n at 640 until #18 measures speed and accuracy together on TensorRT.
 
 ## Evidence
 
-Raw detections, no tracker: person class, score ≥ 0.25, Hungarian matching at IoU 0.5 against the ground truth (class 1, active). MOT17-02 and MOT17-04 only. CPU timings are ONNX Runtime on the dev laptop, median per frame, for prep + inference + decode.
+Raw detections, no tracker: person class, score ≥ 0.25, Hungarian matching at IoU 0.5 against the ground truth (class 1, active). The 1280 rows used a 1280×1280 square input. The precision column is understated: it counted detections on static people, distractors and reflections as false alarms, which the official evaluation ignores (see the update). MOT17-02 and MOT17-04 only. CPU timings are ONNX Runtime on the dev laptop, median per frame, for prep + inference + decode.
 
 | Detector | Recall 02 | Recall 04 | Precision 02 / 04 | CPU ms/frame |
 |---|---|---|---|---|
@@ -24,8 +24,24 @@ Raw detections, no tracker: person class, score ≥ 0.25, Hungarian matching at 
 ## Consequences
 
 - **The detection set must be named wherever MOT17 numbers appear.** The SPEC's "within 2 HOTA points of ByteTrack" means something different at 34% detector recall than at 60%.
-- **Input size has to become a setting** (it's hardcoded as `INPUT_SIZE = 640` in `python/tether/detector.py`), and it should allow a rectangle: a 1280 square spends about 44% of its pixels on padding for a 16:9 frame.
+- **Input size has to become a setting** (it was hardcoded as `INPUT_SIZE = 640` in `python/tether/detector.py`), and it should allow a rectangle: a 1280 square spends about 44% of its pixels on padding for a 16:9 frame. Done in #21: the detector reads its input size from the model.
 - **#18 compares model size × input size, not model size alone.** At 640, n/s/m barely differ. Left as written, #18 would conclude "bigger models don't help" and miss the real trade-off.
 - **This only covers 2 of the 7 train videos.** The full dump in #7 confirms or corrects it.
 - **No detector trained on MOT17 or CrowdHuman.** That's how ByteTrack's published numbers were made, and it would raise the occlusion ceiling, but we evaluate on the MOT17 train split, so a detector trained on those videos would leak. Revisit only with a held-out split.
 - **Low-score matching for Tether is not decided here.** m@640 finds 42% of 50–100 px people on MOT17-04, but only at scores 0.1–0.25, which Tether's `MIN_SCORE = 0.25` throws away. If #7 shows Tether losing there, that becomes its own issue.
+
+## Update (2026-10-18): 1280×736, not the square
+
+Once #21 made rectangular inputs work, we compared YOLO26n at 1280×736 with the 1280×1280 square the evidence above used. Both shrink a 1920×1080 frame by 2/3; only the padding differs. The benchmark detection set is now **YOLO26n at 1280×736** (`tools/export_model.py --model n --size 1280x736`, giving `yolo26n_1280x736.onnx`).
+
+Scored with the official MOT17 rule (detections matched to static-person, person-on-vehicle, distractor or reflection boxes are dropped, not counted as false alarms), score ≥ 0.25, MOT17-02 and 04 only:
+
+| Input | Recall 02 / 04 | Precision 02 / 04 | CPU ms/frame |
+|---|---|---|---|
+| 1280×1280 | 37.2% / 59.9% | 80.1 / 85.7 | 158.6 |
+| **1280×736** | **36.0% / 57.9%** | **81.0 / 87.3** | **91.9** |
+
+- **It's 42% cheaper, and not quite free.** At a fixed 0.25 cutoff, 736 trades 1–2 points of recall for 1–2 points of precision, mostly because its scores run slightly lower. At matched precision the square still leads by about 1 recall point.
+- **Why the shape matters is only partly understood.** Where the padding falls on the stride-32 grid explains about half the gap on 02 and none of it on 04. A model trained on square letterboxed images may simply be slightly off on a wide canvas; that's untested.
+- **The comparison in #7 stays fair either way:** both trackers read the same detection set. Only the absolute HOTA/MOTA move.
+- Timing was one run on one machine (ONNX Runtime CPU, prep + inference + decode, median of 300 frames); the ratio matches the pixel ratio (0.575×) and should carry over better than the milliseconds.

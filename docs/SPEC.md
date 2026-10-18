@@ -187,7 +187,7 @@ All speed targets are for the final C++ version with TensorRT and YOLO26n at 640
 - End-to-end delay on webcam: under 50 ms.
 - Live webcam: keep up with the camera's full rate with zero dropped frames.
 
-**Accuracy on MOT17** (same unfiltered detections given to both trackers; each applies its own thresholds). The headline detection set is YOLO26n at 1280 input, with the shipped detector (YOLO26n at 640) reported as a second row. See `docs/adr/0002-mot17-benchmark-detections-yolo26n-1280.md`.
+**Accuracy on MOT17** (same unfiltered detections given to both trackers; each applies its own thresholds). The headline detection set is YOLO26n at 1280×736 input, with the shipped detector (YOLO26n at 640) reported as a second row. See `docs/adr/0002-mot17-benchmark-detections-yolo26n-1280.md`.
 - HOTA: within 2 points of ByteTrack.
 - IDF1: equal to or better than ByteTrack.
 - ID switches: equal to or fewer than ByteTrack.
