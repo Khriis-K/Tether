@@ -3,7 +3,7 @@
 import argparse
 
 from tether.formats import load_detections, save_tracks
-from tether.tracker import CONFIRM_FRAMES, MAX_MISSING_FRAMES, Tracker
+from tether.tracker import CONFIRM_FRAMES, MAX_MISSING_FRAMES, MIN_SCORE, Tracker
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -17,10 +17,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="most missed frames in a row a searching track survives; "
                              "it is removed on the next miss "
                              f"(default {MAX_MISSING_FRAMES})")
+    parser.add_argument("--min-score", type=float, default=MIN_SCORE,
+                        help=f"detections scored below this are ignored (default {MIN_SCORE})")
     args = parser.parse_args(argv)
 
     tracker = Tracker(confirm_frames=args.confirm_frames,
-                      max_missing_frames=args.max_missing_frames)
+                      max_missing_frames=args.max_missing_frames,
+                      min_score=args.min_score)
     save_tracks(args.tracks, [tracker.update(dets) for dets in load_detections(args.detections)])
     return 0
 

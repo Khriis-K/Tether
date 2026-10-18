@@ -6,6 +6,9 @@ yet, so its prediction is just its last box; if IoU can't match it, it gets a
 second chance by center distance, so objects that are already fast when they
 appear keep their ID.
 
+Detections scored below `min_score` are dropped before anything else, so
+detection files can be saved unfiltered and each tracker picks its own cutoff.
+
 Lifecycle, counted in frames: a new track is "tentative" until it has matched
 `confirm_frames` frames in a row, then "tracked". A tentative track that misses
 a frame is dropped, so one-frame false detections never get a confirmed ID. A
@@ -25,6 +28,7 @@ from tether.matching import match, match_by_distance
 PATH_LENGTH = 30  # box centers kept per track for trails
 CONFIRM_FRAMES = 3  # matched frames in a row before a new track is confirmed
 MAX_MISSING_FRAMES = 30  # missed frames in a row a confirmed track survives
+MIN_SCORE = 0.25  # lowest detector confidence the tracker uses (Ultralytics' default; untuned)
 
 
 @dataclass
@@ -65,14 +69,17 @@ class _TrackState:
 
 class Tracker:
     def __init__(self, confirm_frames: int = CONFIRM_FRAMES,
-                 max_missing_frames: int = MAX_MISSING_FRAMES) -> None:
+                 max_missing_frames: int = MAX_MISSING_FRAMES,
+                 min_score: float = MIN_SCORE) -> None:
         self._confirm_frames = confirm_frames
+        self._min_score = min_score
         self._max_missing_frames = max_missing_frames
         self._tracks: list[_TrackState] = []
         self._next_id = 1
 
     def update(self, detections: list[Detection]) -> list[Track]:
         """Advance one frame. Returns the live tracks, sorted by ID."""
+        detections = [d for d in detections if d.score >= self._min_score]
         # Every track's filter was stepped forward at the end of the last
         # update, so its box is already the prediction for this frame.
         allowed = np.array([[t.cls == d.cls for d in detections] for t in self._tracks], dtype=bool)

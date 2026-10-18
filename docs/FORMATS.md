@@ -42,6 +42,7 @@ Tracks in each frame are sorted by `id`.
 
 Both trackers must follow these rules exactly, or their IDs will drift apart.
 
+- **Score threshold.** Before matching, drop detections scored below the tracker's `min_score` (default 0.25). Column order below is the file order of the detections that remain.
 - **Rows and columns.** Tracks are the rows, in ID order. Detections are the columns, in file order.
 - **Valid pairs.** A track and a detection can match only if they have the same `class` and their IoU is at least 0.3.
 - **Assignment.** Pick the one-to-one pairing with the most valid pairs. Among those, pick the one with the lowest total `1 − IoU`. In practice: give invalid cells a cost of 1e6, which is more than any total of valid costs, run Hungarian, and then drop the invalid pairs it chose.

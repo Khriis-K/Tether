@@ -4,6 +4,7 @@ Both are JSON Lines, one line per frame, in frame order. See docs/FORMATS.md.
 """
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,7 +30,8 @@ class Track:
     path: tuple[Point, ...]  # recent box centers, oldest first
 
 
-def save_detections(path: str | Path, frames: list[list[Detection]]) -> None:
+def save_detections(path: str | Path, frames: Iterable[list[Detection]]) -> None:
+    """Write frames as they come, so a stream (like a webcam) can be saved without buffering."""
     _write_lines(path, ({"frame": i, "detections": [_detection_to_json(d) for d in dets]}
                         for i, dets in enumerate(frames)))
 

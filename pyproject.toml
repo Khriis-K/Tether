@@ -12,9 +12,12 @@ dependencies = ["numpy>=1.24", "scipy>=1.10"]
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+demo = ["onnxruntime>=1.18", "opencv-python>=4.8"]  # tether-demo
+export = ["ultralytics==8.4.181", "onnx==1.23.2"]  # tools/export_model.py only
 
 [project.scripts]
 tether-track = "tether.cli:main"
+tether-demo = "tether.demo:main"
 
 [tool.setuptools.packages.find]
 where = ["python"]

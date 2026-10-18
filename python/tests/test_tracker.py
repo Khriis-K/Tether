@@ -98,3 +98,23 @@ def test_new_object_gets_a_new_id_that_is_never_reused():
 
     assert outputs[1] == []
     assert outputs[2][0].id != outputs[0][0].id
+
+
+def test_detections_below_the_score_threshold_are_ignored():
+    tracker = Tracker(min_score=0.5)
+
+    tracks = tracker.update([
+        Detection(box=(0.0, 0.0, 10.0, 10.0), score=0.49, cls=0),
+        Detection(box=(50.0, 50.0, 60.0, 60.0), score=0.5, cls=0),
+    ])
+
+    assert [t.box for t in tracks] == [(50.0, 50.0, 60.0, 60.0)]
+
+
+def test_a_low_score_detection_does_not_keep_a_track_matched():
+    tracker = Tracker(min_score=0.5, confirm_frames=1)
+    first = tracker.update([Detection(box=moving_box(0), score=0.9, cls=0)])
+
+    tracks = tracker.update([Detection(box=moving_box(1), score=0.2, cls=0)])
+
+    assert [(t.id, t.status) for t in tracks] == [(first[0].id, "searching")]
