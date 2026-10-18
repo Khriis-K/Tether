@@ -125,7 +125,7 @@ class Tracker:
         return [t.snapshot() for t in self._tracks]
 
     def _match_unmatched(self, wanted: Callable[[_TrackState], bool],
-                         matcher: Callable[..., list[tuple[int, int]]],
+                         matcher: Callable[[list[Box], list[Box], np.ndarray], list[tuple[int, int]]],
                          detections: list[Detection], allowed: np.ndarray,
                          pairs: list[tuple[int, int]]) -> list[tuple[int, int]]:
         """Pair the `wanted` tracks not yet in `pairs` with the detections not yet in `pairs`."""
