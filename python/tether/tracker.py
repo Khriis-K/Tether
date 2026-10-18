@@ -3,17 +3,22 @@
 Each track has a Kalman filter, and detections are matched against where each
 track is predicted to be this frame, in this order:
 
-1. Confirmed tracks (tracked and searching) against all detections, by IoU.
-2. Tentative tracks against the detections left over, by IoU. Matching them
-   second keeps a new track (say, from a duplicate box) from taking the
-   detection of the confirmed track it overlaps.
-3. A track seen only once has no velocity yet, so its prediction is just its
+1. Confirmed tracks (tracked and searching) against the high detections, by IoU.
+2. Tracked tracks still unmatched against the low detections, by IoU of at
+   least LOW_MIN_IOU. This keeps a track alive through a frame where its object
+   is detected only weakly, say while partly occluded (ByteTrack's second pass).
+3. Tentative tracks against the high detections left over, by IoU. Matching them
+   after confirmed ones keeps a new track (say, from a duplicate box) from taking
+   the detection of the confirmed track it overlaps.
+4. A track seen only once has no velocity yet, so its prediction is just its
    last box; if IoU can't match it, it gets a second chance by center distance
-   against whatever is still unmatched, so objects that are already fast when
+   against the high detections still unmatched, so objects that are already fast when
    they appear keep their ID.
 
-Detections scored below `min_score` are dropped before anything else, so
-detection files can be saved unfiltered and each tracker picks its own cutoff.
+Detections scored at least `min_score` are high; those above LOW_SCORE but below
+`min_score` are low, and only ever used in stage 2, so they never start a track;
+the rest are dropped. Detection files can be saved unfiltered and each tracker
+picks its own cutoff.
 
 Lifecycle, counted in frames: a new track is "tentative" until it has matched
 `confirm_frames` frames in a row, then "tracked". A tentative track that misses
@@ -36,6 +41,9 @@ PATH_LENGTH = 30  # box centers kept per track for trails
 CONFIRM_FRAMES = 3  # matched frames in a row before a new track is confirmed
 MAX_MISSING_FRAMES = 30  # missed frames in a row a confirmed track survives
 MIN_SCORE = 0.25  # lowest detector confidence the tracker uses (Ultralytics' default; untuned)
+# The low-score pass, with ByteTrack's published values (untuned):
+LOW_SCORE = 0.1  # low detections score above this and below min_score
+LOW_MIN_IOU = 0.5  # pairs with a low detection that overlap less are never matched
 
 
 @dataclass
@@ -86,15 +94,24 @@ class Tracker:
 
     def update(self, detections: list[Detection]) -> list[Track]:
         """Advance one frame. Returns the live tracks, sorted by ID."""
-        detections = [d for d in detections if d.score >= self._min_score]
+        high = [d for d in detections if d.score >= self._min_score]
+        low = [d for d in detections if LOW_SCORE < d.score < self._min_score]
+        # High detections come first, so indices below len(high) are high ones.
+        detections = high + low
         # Every track's filter was stepped forward at the end of the last
         # update, so its box is already the prediction for this frame.
         allowed = np.array([[t.cls == d.cls for d in detections] for t in self._tracks], dtype=bool)
         allowed = allowed.reshape(len(self._tracks), len(detections))
-        pairs = self._match_unmatched(lambda t: t.confirmed, match, detections, allowed, [])
-        pairs += self._match_unmatched(lambda t: not t.confirmed, match, detections, allowed, pairs)
+        is_low = np.arange(len(detections)) >= len(high)
+        high_allowed, low_allowed = allowed & ~is_low, allowed & is_low
+        pairs = self._match_unmatched(lambda t: t.confirmed, match, detections, high_allowed, [])
+        pairs += self._match_unmatched(lambda t: t.status == "tracked",
+                                       lambda t, d, a: match(t, d, a, min_iou=LOW_MIN_IOU),
+                                       detections, low_allowed, pairs)
+        pairs += self._match_unmatched(lambda t: not t.confirmed, match, detections,
+                                       high_allowed, pairs)
         pairs += self._match_unmatched(lambda t: t.hits == 1, match_by_distance,
-                                       detections, allowed, pairs)
+                                       detections, high_allowed, pairs)
 
         survivors = []
         for ti, di in pairs:
@@ -111,7 +128,7 @@ class Tracker:
                     survivors.append(track)
 
         matched = {di for _, di in pairs}
-        for di, det in enumerate(detections):
+        for di, det in enumerate(high):
             if di not in matched:
                 track = _TrackState(id=self._next_id, box=det.box, cls=det.cls,
                                     motion=BoxFilter(det.box))

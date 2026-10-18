@@ -134,6 +134,8 @@ def test_a_low_score_detection_does_not_keep_a_track_matched():
     tracker = Tracker(min_score=0.5, confirm_frames=1)
     first = tracker.update([Detection(box=moving_box(0), score=0.9, cls=0)])
 
-    tracks = tracker.update([Detection(box=moving_box(1), score=0.2, cls=0)])
+    # At or below LOW_SCORE a detection is dropped; between it and min_score it
+    # can keep a tracked track alive (test_low_score.py).
+    tracks = tracker.update([Detection(box=moving_box(1), score=0.05, cls=0)])
 
     assert [(t.id, t.status) for t in tracks] == [(first[0].id, "searching")]

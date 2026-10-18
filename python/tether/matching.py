@@ -33,17 +33,17 @@ def center_distance(track: Box, det: Box) -> float:
 
 
 def match(track_boxes: list[Box], det_boxes: list[Box],
-          allowed: np.ndarray | None = None) -> list[tuple[int, int]]:
+          allowed: np.ndarray | None = None, min_iou: float = MIN_IOU) -> list[tuple[int, int]]:
     """Best one-to-one pairing of tracks to detections, as (track, detection) index pairs.
 
-    A pair is valid when its IoU is at least MIN_IOU and `allowed` (an optional
+    A pair is valid when its IoU is at least `min_iou` and `allowed` (an optional
     boolean grid) permits it. Returns the assignment with the most valid pairs,
     and among those the lowest total (1 - IoU). Result is sorted by track index.
     """
     if not track_boxes or not det_boxes:
         return []
     ious = np.array([[iou(t, d) for d in det_boxes] for t in track_boxes])
-    return _assign(1.0 - ious, ious >= MIN_IOU, allowed)
+    return _assign(1.0 - ious, ious >= min_iou, allowed)
 
 
 def match_by_distance(track_boxes: list[Box], det_boxes: list[Box],
