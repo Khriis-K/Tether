@@ -1,0 +1,31 @@
+# MOT17 benchmark detections: YOLO26n at 1280 input
+
+The first MOT17 run (#6) scored HOTA 27.8. The tracker's recall (32.1%) sat right at the detector's own ceiling (about 34%): YOLO26n at 640 input missed two-thirds of the people, almost all of the ones under 100 px tall. MOT17 frames are 1920×1080, so letterboxing to 640 shrinks people 3×. With that few people reaching the trackers, a Tether-vs-ByteTrack gap (#7) would say little, and it would tilt toward ByteTrack, whose second matching pass uses the low-score detections a weak detector produces.
+
+**Decision:** #7 headlines detections from **YOLO26n at 1280 input**, and also reports a second row on the **shipped detector (YOLO26n at 640)**. The benchmark detection set and the shipped detector are separate choices: detections are dumped to a file once, so detector speed doesn't affect the benchmark. The shipped detector stays YOLO26n at 640 until #18 measures speed and accuracy together on TensorRT.
+
+## Evidence
+
+Raw detections, no tracker: person class, score ≥ 0.25, Hungarian matching at IoU 0.5 against the ground truth (class 1, active). MOT17-02 and MOT17-04 only. CPU timings are ONNX Runtime on the dev laptop, median per frame, for prep + inference + decode.
+
+| Detector | Recall 02 | Recall 04 | Precision 02 / 04 | CPU ms/frame |
+|---|---|---|---|---|
+| n @ 640 (shipped) | 23.0% | 24.7% | 79.8 / 90.6 | 39 |
+| s @ 640 | 28.7% | 30.2% | 77.1 / 92.5 | 106 |
+| m @ 640 | 31.0% | 29.8% | 83.3 / 92.8 | 312 |
+| **n @ 1280** | **37.3%** | **60.4%** | **73.4 / 83.6** | **147** |
+| s @ 1280 | 40.3% | 63.1% | 69.8 / 82.9 | 434 |
+| n @ 1088×1920 (native) | 39.5% | 63.1% | 72.0 / 75.7 | 189 |
+
+- **Input size is the lever, not model size.** On MOT17-04, people 50–100 px tall go from 0% found at n@640 to 61% at n@1280. A model 3× bigger at 640 (m) still finds 0%.
+- **Past 1280, returns flatten.** s@1280 and native resolution add about 3 points each, and both cost precision. At native resolution, large people get slightly worse (02, >200 px: 78% → 74%), which fits a model trained on 640 images seeing people bigger than it was trained on.
+- **What's left is out of reach for input size.** People over 200 px tall top out around 75–80% for every variant (most likely occlusion), and people under 50 px stay under 5%.
+
+## Consequences
+
+- **The detection set must be named wherever MOT17 numbers appear.** The SPEC's "within 2 HOTA points of ByteTrack" means something different at 34% detector recall than at 60%.
+- **Input size has to become a setting** (it's hardcoded as `INPUT_SIZE = 640` in `python/tether/detector.py`), and it should allow a rectangle: a 1280 square spends about 44% of its pixels on padding for a 16:9 frame.
+- **#18 compares model size × input size, not model size alone.** At 640, n/s/m barely differ. Left as written, #18 would conclude "bigger models don't help" and miss the real trade-off.
+- **This only covers 2 of the 7 train videos.** The full dump in #7 confirms or corrects it.
+- **No detector trained on MOT17 or CrowdHuman.** That's how ByteTrack's published numbers were made, and it would raise the occlusion ceiling, but we evaluate on the MOT17 train split, so a detector trained on those videos would leak. Revisit only with a held-out split.
+- **Low-score matching for Tether is not decided here.** m@640 finds 42% of 50–100 px people on MOT17-04, but only at scores 0.1–0.25, which Tether's `MIN_SCORE = 0.25` throws away. If #7 shows Tether losing there, that becomes its own issue.

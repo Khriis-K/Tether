@@ -111,6 +111,9 @@ Before trusting a metric, ask: *what score would a useless system get?* If a tra
 
 **In Tether:** a tracker that never drops its one track would score 100% "same ID kept" on single-drone clips. The fix was to require IoU ≥ 0.5 with the real drone box for the ID to count.
 
+### Train/test leakage
+Scoring a model on data it was trained on. The numbers look great and mean nothing, like grading a student on the exact homework they studied. Published MOT17 trackers often use detectors trained on MOT17's train videos. Tether evaluates *on* those videos, so it can't use such a detector without a held-out split.
+
 ---
 
 ## Detection & runtimes
@@ -140,6 +143,12 @@ Turning a raw camera frame into what the model expects: resize to the input size
 
 ### Host vs. device memory
 "Host" means CPU RAM and "device" means GPU memory. Copying between them costs time. Doing frame prep on the GPU and handing the result *straight* to the detector skips a round trip.
+
+### Input size (and letterboxing)
+The image size the model actually sees. A 1920×1080 frame is shrunk to fit the input (e.g. 640×640) with gray padding filling the leftover space, which is called letterboxing. Shrinking 3× turns a 60 px person into a 20 px smudge the model can't find. On MOT17, going from 640 to 1280 input more than doubled recall, while bigger models at 640 barely helped: a bigger brain doesn't help if the eyes can't see. A square input also wastes pixels on padding for wide frames, so a rectangle (e.g. 1280×736) does the same job cheaper.
+
+### Benchmark detection set vs. shipped detector
+Two separate choices. The **benchmark detection set** is what a tracker comparison runs on: detections are dumped to a file once, so it can come from a slow, strong detector, and it should, so the trackers get enough signal to be compared. The **shipped detector** is what runs live, so it has to be fast. Tether benchmarks on YOLO26n at 1280 and ships YOLO26n at 640 (for now), and reports MOT17 for both. See ADR 0002.
 
 ---
 
