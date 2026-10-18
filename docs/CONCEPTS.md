@@ -151,8 +151,17 @@ Turning a raw camera frame into what the model expects: resize to the input size
 
 They're different. A parallel pipeline can raise FPS without making any single frame faster, and can even add a little delay per frame.
 
+**In Tether:** the timing log stores each step's start and end time, not just how long it took, so both can be measured from one log. Frame time is the gap between frames finishing; delay is from a frame being captured to it being drawn. In the sequential pipeline they're nearly the same number. In the parallel one they split apart, and only timestamps can tell.
+
+**Gotcha:** the measured delay starts when the program has the frame. The camera's own sensor-to-USB delay comes before that and isn't counted, so a true camera-to-screen number is higher.
+
 ### Tail latency (P99 / worst 1%)
 The frame time that 99% of frames beat. Averages hide the occasional slow frame, but the viewer sees it as a stutter. A pipeline averaging 8 ms with a 40 ms P99 *feels* worse than a steady 12 ms.
+
+### Nearest-rank percentile
+One way to compute a percentile: sort the values and pick the one at position ⌈p × n⌉. The answer is always a value you actually measured. NumPy's default instead *interpolates* between neighbors, which can give a frame time no frame ever had. On small samples the two disagree a lot.
+
+**In Tether:** `tether-timing` uses nearest rank. With under 100 frames, P99 is simply the worst frame.
 
 ### Sequential vs. parallel (pipelined) stages
 - **Sequential:** capture → prep → detect → track → draw, one frame at a time. Simple to debug, but every stage waits on the others.

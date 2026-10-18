@@ -18,6 +18,7 @@ export = ["ultralytics==8.4.181", "onnx==1.23.2"]  # tools/export_model.py only
 [project.scripts]
 tether-track = "tether.cli:main"
 tether-demo = "tether.demo:main"
+tether-timing = "tether.timing:main"
 
 [tool.setuptools.packages.find]
 where = ["python"]

@@ -6,6 +6,7 @@ boxes per image as rows of [x1, y1, x2, y2, score, class], in model-input
 pixels. All that's left to do here is undo the letterbox and drop low scores.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -59,8 +60,26 @@ def decode(output: np.ndarray, scale: float, pad: tuple[int, int],
     return detections
 
 
+@dataclass(frozen=True)
+class PreparedFrame:
+    """Model input for one frame, plus what's needed to map boxes back to the frame."""
+    blob: np.ndarray  # [1, 3, size, size] float32 RGB in [0, 1]
+    scale: float
+    pad: tuple[int, int]
+    frame_shape: tuple[int, int]  # (h, w) of the original frame
+
+
+def prepare(frame: np.ndarray) -> PreparedFrame:
+    """Frame prep: letterbox a BGR frame (as OpenCV reads them) into the model's input."""
+    image, scale, pad = letterbox(frame)
+    # BGR HWC uint8 -> RGB CHW float in [0, 1], with a batch dimension.
+    blob = np.ascontiguousarray(image[:, :, ::-1].transpose(2, 0, 1), dtype=np.float32)[None] / 255.0
+    return PreparedFrame(blob, scale, pad, frame.shape[:2])
+
+
 class OnnxDetector:
-    """YOLO26 on ONNX Runtime's CPU provider. Call it with a BGR frame (as OpenCV reads them).
+    """YOLO26 on ONNX Runtime's CPU provider. Call it with a BGR frame (as OpenCV reads them),
+    or call `detect` with a frame already prepared.
 
     The provider is fixed so timings mean the same thing on every machine;
     faster runtimes come later as their own setting.
@@ -72,8 +91,8 @@ class OnnxDetector:
         self._min_score = min_score
 
     def __call__(self, frame: np.ndarray) -> list[Detection]:
-        image, scale, pad = letterbox(frame)
-        # BGR HWC uint8 -> RGB CHW float in [0, 1], with a batch dimension.
-        blob = np.ascontiguousarray(image[:, :, ::-1].transpose(2, 0, 1), dtype=np.float32)[None] / 255.0
-        (output,) = self._session.run(None, {self._input_name: blob})
-        return decode(output, scale, pad, frame.shape[:2], self._min_score)
+        return self.detect(prepare(frame))
+
+    def detect(self, prepared: PreparedFrame) -> list[Detection]:
+        (output,) = self._session.run(None, {self._input_name: prepared.blob})
+        return decode(output, prepared.scale, prepared.pad, prepared.frame_shape, self._min_score)

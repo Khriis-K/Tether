@@ -12,10 +12,18 @@ import numpy as np
 
 
 def frames(source: str) -> Iterator[np.ndarray]:
-    """Yield BGR frames. `source` is a webcam index ("0") or a video file path."""
+    """BGR frames, one at a time. `source` is a webcam index ("0") or a video file path.
+
+    The source opens right away, not on the first frame, so opening a camera
+    (which can take a second) isn't timed as the first frame's capture.
+    """
     capture = cv2.VideoCapture(int(source) if source.isdigit() else source)
     if not capture.isOpened():
         raise OSError(f"can't open video source {source!r}")
+    return _read(capture)
+
+
+def _read(capture: cv2.VideoCapture) -> Iterator[np.ndarray]:
     try:
         while True:
             ok, frame = capture.read()

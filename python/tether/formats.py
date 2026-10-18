@@ -1,6 +1,8 @@
-"""Detection and track files: the tracker's input and output, shared by every tool.
+"""Detection, track and timing files, shared by every tool.
 
-Both are JSON Lines, one line per frame, in frame order. See docs/FORMATS.md.
+Detection and track files are the tracker's input and output; timing logs hold
+how long each pipeline step took. All are JSON Lines, one line per frame, in
+frame order. See docs/FORMATS.md.
 """
 
 import json
@@ -10,6 +12,9 @@ from pathlib import Path
 
 Box = tuple[float, float, float, float]  # x1, y1, x2, y2 in pixels
 Point = tuple[float, float]
+
+STEPS = ("capture", "prep", "detect", "track", "draw")  # pipeline steps, in order
+StepTimes = dict[str, tuple[float, float]]  # step -> (start, end) in milliseconds
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,16 @@ def load_tracks(path: str | Path) -> list[list[Track]]:
     return [[_track_from_json(t) for t in line["tracks"]] for line in _read_lines(path)]
 
 
+def save_timings(path: str | Path, frames: Iterable[StepTimes]) -> None:
+    """Write frames as they come, so a run cut short still leaves a valid log."""
+    _write_lines(path, ({"frame": i, "steps": {step: _floats(times[step]) for step in STEPS}}
+                        for i, times in enumerate(frames)))
+
+
+def load_timings(path: str | Path) -> list[StepTimes]:
+    return [_step_times_from_json(path, line) for line in _read_lines(path)]
+
+
 def _detection_to_json(d: Detection) -> dict:
     return {"box": _floats(d.box), "score": float(d.score), "class": int(d.cls)}
 
@@ -81,6 +96,13 @@ def _track_from_json(t: dict) -> Track:
     )
 
 
+def _step_times_from_json(path: str | Path, line: dict) -> StepTimes:
+    missing = [step for step in STEPS if step not in line["steps"]]
+    if missing:
+        raise ValueError(f"{path}: frame {line['frame']} is missing steps {missing}")
+    return {step: _span(line["steps"][step]) for step in STEPS}
+
+
 def _floats(values) -> list[float]:
     return [float(v) for v in values]
 
@@ -88,6 +110,11 @@ def _floats(values) -> list[float]:
 def _box(values) -> Box:
     x1, y1, x2, y2 = (float(v) for v in values)
     return (x1, y1, x2, y2)
+
+
+def _span(values) -> tuple[float, float]:
+    start, end = (float(v) for v in values)
+    return (start, end)
 
 
 def _write_lines(path: str | Path, objects) -> None:
