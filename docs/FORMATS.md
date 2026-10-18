@@ -38,6 +38,16 @@ Tracks in each frame are sorted by `id`.
 | `frames_since_seen` | integer | Frames since the track last matched a detection (0 means it matched this frame) |
 | `path` | list of `[x, y]` | Box centers from the last 30 matched frames, oldest first |
 
+## MOT results file
+
+`tether-mot17` converts each track file to the [MOT Challenge](https://motchallenge.net/) results format so TrackEval can score it. It's not JSON: one CSV row per track per frame, one file per video.
+
+```
+1,3,10.00,20.00,20.00,40.00,1,-1,-1,-1
+```
+
+`frame,id,left,top,width,height,conf,-1,-1,-1`, with frames counted from 1. Only `"tracked"` people (COCO class 0) are written: tentative tracks aren't confirmed yet, and a searching track's `box` is where it was last seen, not where it is. Tracks carry no score, so `conf` is always 1. Boxes are written as-is, without shifting to MOT's 1-based pixel coordinates, the same as ByteTrack, so both trackers are scored on equal terms.
+
 ## Timing log
 
 Every pipeline run writes one, in Python (`tether-demo`, default `results/timing-<date>-<time>.jsonl`) and in C++. `tether-demo --dump` only saves detections and isn't timed. Each line holds when every step of that frame started and ended.
