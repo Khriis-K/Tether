@@ -1,10 +1,16 @@
 """The tracker: one frame of detections in, the current tracks out.
 
 Each track has a Kalman filter, and detections are matched against where each
-track is predicted to be this frame. A track seen only once has no velocity
-yet, so its prediction is just its last box; if IoU can't match it, it gets a
-second chance by center distance, so objects that are already fast when they
-appear keep their ID.
+track is predicted to be this frame, in this order:
+
+1. Confirmed tracks (tracked and searching) against all detections, by IoU.
+2. Tentative tracks against the detections left over, by IoU. Matching them
+   second keeps a new track (say, from a duplicate box) from taking the
+   detection of the confirmed track it overlaps.
+3. A track seen only once has no velocity yet, so its prediction is just its
+   last box; if IoU can't match it, it gets a second chance by center distance
+   against whatever is still unmatched, so objects that are already fast when
+   they appear keep their ID.
 
 Detections scored below `min_score` are dropped before anything else, so
 detection files can be saved unfiltered and each tracker picks its own cutoff.
@@ -17,6 +23,7 @@ matched, until it has missed more than `max_missing_frames` frames in a row.
 """
 
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -84,8 +91,10 @@ class Tracker:
         # update, so its box is already the prediction for this frame.
         allowed = np.array([[t.cls == d.cls for d in detections] for t in self._tracks], dtype=bool)
         allowed = allowed.reshape(len(self._tracks), len(detections))
-        pairs = match([t.motion.box for t in self._tracks], [d.box for d in detections], allowed)
-        pairs += self._match_new_tracks_by_distance(detections, allowed, pairs)
+        pairs = self._match_unmatched(lambda t: t.confirmed, match, detections, allowed, [])
+        pairs += self._match_unmatched(lambda t: not t.confirmed, match, detections, allowed, pairs)
+        pairs += self._match_unmatched(lambda t: t.hits == 1, match_by_distance,
+                                       detections, allowed, pairs)
 
         survivors = []
         for ti, di in pairs:
@@ -115,14 +124,16 @@ class Tracker:
         self._tracks = sorted(survivors, key=lambda t: t.id)
         return [t.snapshot() for t in self._tracks]
 
-    def _match_new_tracks_by_distance(self, detections: list[Detection], allowed: np.ndarray,
-                                      pairs: list[tuple[int, int]]) -> list[tuple[int, int]]:
-        """Pair still-unmatched once-seen tracks with still-unmatched detections."""
+    def _match_unmatched(self, wanted: Callable[[_TrackState], bool],
+                         matcher: Callable[..., list[tuple[int, int]]],
+                         detections: list[Detection], allowed: np.ndarray,
+                         pairs: list[tuple[int, int]]) -> list[tuple[int, int]]:
+        """Pair the `wanted` tracks not yet in `pairs` with the detections not yet in `pairs`."""
         matched_tracks = {ti for ti, _ in pairs}
         matched_dets = {di for _, di in pairs}
-        tis = [ti for ti, t in enumerate(self._tracks) if t.hits == 1 and ti not in matched_tracks]
+        tis = [ti for ti, t in enumerate(self._tracks) if wanted(t) and ti not in matched_tracks]
         dis = [di for di in range(len(detections)) if di not in matched_dets]
-        sub_pairs = match_by_distance([self._tracks[ti].motion.box for ti in tis],
-                                      [detections[di].box for di in dis],
-                                      allowed[np.ix_(tis, dis)])
+        sub_pairs = matcher([self._tracks[ti].motion.box for ti in tis],
+                            [detections[di].box for di in dis],
+                            allowed[np.ix_(tis, dis)])
         return [(tis[a], dis[b]) for a, b in sub_pairs]
