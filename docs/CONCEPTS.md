@@ -39,7 +39,9 @@ The states a track moves through:
 - **Searching:** lost its detection. It keeps predicting where the object is and waits to be re-matched.
 - **Removed:** searched too long without a match, so it's deleted.
 
-**In Tether:** every threshold is counted in **frames**, not seconds (see *Frame-based vs. wall-clock limits*).
+**In Tether:** every threshold is counted in **frames**, not seconds (see *Frame-based vs. wall-clock limits*). The defaults are 3 frames to confirm and 30 missed frames before removal (`--confirm-frames`, `--max-missing-frames`). A tentative track that misses even one frame is dropped on the spot. A searching track reports its last *seen* box as `box` and its guess as `predicted_box`. All states compete in one matching pass.
+
+**Gotcha:** "30 frames" is 1 second at 30 FPS but only half a second at 60 FPS. The Anti-UAV goal of recovering 1-second gaps needs the limit set from each clip's frame rate, not left at the default.
 
 ---
 

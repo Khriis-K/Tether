@@ -28,7 +28,7 @@ def test_track_reports_box_class_status_and_frames_since_seen():
     track = tracks[0]
     assert track.box == (10.0, 20.0, 30.0, 40.0)
     assert track.cls == 3
-    assert track.status == "tracked"
+    assert track.status == "tentative"  # new tracks are confirmed later (test_lifecycle.py)
     assert track.frames_since_seen == 0
 
 

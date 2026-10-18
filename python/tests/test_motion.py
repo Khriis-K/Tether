@@ -112,7 +112,9 @@ def test_established_track_does_not_take_a_nearby_non_overlapping_detection():
     # away. The track's prediction says "still here", so that's someone else.
     outputs = run([0.0] * 5 + [60.0])
 
-    assert outputs[5][0].id != outputs[0][0].id
+    # The old track is still in the output, searching; find who took the detection.
+    taker = next(t for t in outputs[5] if t.box == box_at(60.0))
+    assert taker.id != outputs[0][0].id
 
 
 def test_new_track_predicts_it_stays_where_it_is():
