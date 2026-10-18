@@ -31,7 +31,7 @@ Tracks in each frame are sorted by `id`.
 | Field | Type | Meaning |
 |---|---|---|
 | `id` | integer, starts at 1 | Stable track ID. Never reused within a run. |
-| `box` | 4 numbers | The track's current box |
+| `box` | 4 numbers | The box of the detection the track last matched. For a `"searching"` track that's its last seen box. Its guess for where the object is now is `predicted_box`. |
 | `class` | integer | Class of the detections the track follows |
 | `status` | `"tentative"`, `"tracked"` or `"searching"` | Lifecycle state. Removed tracks are left out. |
 | `predicted_box` | 4 numbers | Where the tracker expects the object in the next frame |

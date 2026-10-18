@@ -14,7 +14,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="matched frames in a row before a new track is confirmed "
                              f"(default {CONFIRM_FRAMES})")
     parser.add_argument("--max-missing-frames", type=int, default=MAX_MISSING_FRAMES,
-                        help="missed frames in a row before a searching track is removed "
+                        help="most missed frames in a row a searching track survives; "
+                             "it is removed on the next miss "
                              f"(default {MAX_MISSING_FRAMES})")
     args = parser.parse_args(argv)
 
