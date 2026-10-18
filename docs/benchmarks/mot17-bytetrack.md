@@ -1,30 +1,30 @@
 # MOT17: Tether vs. ByteTrack
 
-Run 2026-10-18 for #7; Tether rows rerun 2026-10-18 for #23, after it began matching confirmed tracks before tentative ones (Tether before #23: 35.6 HOTA / 40.5 IDF1 / 1270 ID switches at 1280×736, 27.8 / 29.2 / 948 at 640). Both trackers read the same unfiltered detection files (every detection down to score 0.1) and apply their own thresholds. All 7 MOT17 train videos (FRCNN copies), scored by `tether-mot17` with TrackEval 1.3.0, MOT17's official preprocessing, no output filtering for either tracker.
+Run 2026-10-18 for #7; Tether rows rerun 2026-10-18 for #23, after it began matching confirmed tracks before tentative ones (Tether before #23: 35.6 HOTA / 40.5 IDF1 / 1270 ID switches at 1280×736, 27.8 / 29.2 / 948 at 640), and again for #26, after it gained ByteTrack's low-score pass (Tether before #26: 40.9 / 48.6 / 779 at 1280×736, 31.7 / 34.9 / 626 at 640). Both trackers read the same unfiltered detection files (every detection down to score 0.1) and apply their own thresholds. All 7 MOT17 train videos (FRCNN copies), scored by `tether-mot17` with TrackEval 1.3.0, MOT17's official preprocessing, no output filtering for either tracker.
 
 ## Results
 
 | Tracker | Detections | HOTA | IDF1 | ID switches | Recall | Precision |
 |---|---|---|---|---|---|---|
-| Tether | YOLO26n @ 1280×736 | 40.9 | 48.6 | 779 | 52.6% | 88.2% |
+| Tether | YOLO26n @ 1280×736 | 41.3 | 49.0 | 748 | 55.0% | 85.7% |
 | ByteTrack | YOLO26n @ 1280×736 | 40.9 | 48.6 | 800 | 54.0% | 86.1% |
-| Tether | YOLO26n @ 640 | 31.7 | 34.9 | 626 | 32.2% | 89.2% |
+| Tether | YOLO26n @ 640 | 32.8 | 36.9 | 557 | 34.8% | 87.3% |
 | ByteTrack | YOLO26n @ 640 | 33.5 | 37.9 | 549 | 33.9% | 87.8% |
 
 The 1280×736 rows are the headline (ADR 0002). Recall and precision are CLEAR's, at IoU 0.5.
 
 **Against the SPEC targets** (HOTA within 2 points, IDF1 and ID switches at least as good):
 
-- **1280×736:** HOTA is met (40.92 vs 40.86) and ID switches are met (779 vs 800). IDF1 misses by 0.03 (48.60 vs 48.63): a tie in practice, but not "at least as good".
-- **640:** HOTA is met (1.7 behind), but IDF1 is 3.0 lower and Tether makes 77 more ID switches.
+- **1280×736:** all three are met: HOTA 41.29 vs 40.86, IDF1 49.04 vs 48.63, ID switches 748 vs 800.
+- **640:** HOTA is met (0.6 behind), but IDF1 is 1.0 lower (36.95 vs 37.91) and Tether makes 8 more ID switches (557 vs 549).
 
 HOTA per video:
 
 | Tracker | Detections | 02 | 04 | 05 | 09 | 10 | 11 | 13 |
 |---|---|---|---|---|---|---|---|---|
-| Tether | YOLO26n @ 1280×736 | 26.9 | 45.2 | 42.8 | 43.9 | 33.7 | 49.6 | 36.2 |
+| Tether | YOLO26n @ 1280×736 | 27.3 | 45.3 | 42.8 | 44.7 | 35.6 | 49.0 | 37.5 |
 | ByteTrack | YOLO26n @ 1280×736 | 31.2 | 43.9 | 41.9 | 46.3 | 33.2 | 51.1 | 35.1 |
-| Tether | YOLO26n @ 640 | 21.8 | 30.4 | 41.7 | 38.0 | 27.3 | 47.6 | 26.6 |
+| Tether | YOLO26n @ 640 | 23.1 | 31.4 | 41.8 | 39.0 | 30.0 | 47.9 | 27.8 |
 | ByteTrack | YOLO26n @ 640 | 28.0 | 31.8 | 43.2 | 42.9 | 26.1 | 47.6 | 26.7 |
 
 ## Where Tether lost: matching order, not low-score detections
@@ -37,19 +37,21 @@ First, a run of ByteTrack with its second pass turned off (`tether-bytetrack --n
 |---|---|---|---|---|---|---|
 | ByteTrack | YOLO26n @ 1280×736 | 40.9 | 48.6 | 800 | 54.0% | 86.1% |
 | ByteTrack, no low-score pass | YOLO26n @ 1280×736 | 40.7 | 48.4 | 889 | 51.6% | 88.5% |
-| Tether | YOLO26n @ 1280×736 | 40.9 | 48.6 | 779 | 52.6% | 88.2% |
+| Tether before #26 (no low-score pass) | YOLO26n @ 1280×736 | 40.9 | 48.6 | 779 | 52.6% | 88.2% |
 | ByteTrack | YOLO26n @ 640 | 33.5 | 37.9 | 549 | 33.9% | 87.8% |
 | ByteTrack, no low-score pass | YOLO26n @ 640 | 32.8 | 36.6 | 577 | 31.6% | 89.7% |
-| Tether | YOLO26n @ 640 | 31.7 | 34.9 | 626 | 32.2% | 89.2% |
+| Tether before #26 (no low-score pass) | YOLO26n @ 640 | 31.7 | 34.9 | 626 | 32.2% | 89.2% |
 
 - **The low-score pass is worth 0.2 HOTA at 1280×736 and 0.7 at 640.** That was well under a fifth of the old gap, so the gap was not about low-score detections.
 - **Tether found as many boxes as ByteTrack does on the same input, but kept fewer IDs.** Before #23 it made 1270 ID switches to the no-low-score ByteTrack's 889, at similar recall and precision.
 
 Second, the association ablations (#22, [mot17-association-ablations.md](mot17-association-ablations.md)) found the cause. Tether matched tentative tracks in the same pass as confirmed ones, so a new tentative track (say, from a duplicate box) could take the detection of the confirmed track it overlapped, and was then confirmed under a new ID. That happened 847 times at 1280×736. Changing the gate, the Kalman model, the number of confirmation frames, the reported boxes or the assignment objective did not help. Matching confirmed tracks first, as ByteTrack does, closed the gap at 1280×736, and that is what Tether does now.
 
-At 640 Tether is still 1.7 HOTA, 3.0 IDF1 and 77 ID switches behind ByteTrack; the cause is not known yet. The ablations found that ByteTrack's Kalman filter on top of the new matching order gives +0.8 HOTA and +2.2 IDF1 at 1280×736, but 172 more ID switches, so it is a separate decision.
+Then #26 added ByteTrack's low-score pass ([mot17-lowscore-ocsort-ablations.md](mot17-lowscore-ocsort-ablations.md) tested it first): tracks that were tracked last frame and found no detection scored ≥ 0.25 can match one scored between 0.1 and 0.25 at IoU ≥ 0.5, and those detections never start a track. The values are ByteTrack's, not tuned. It gave Tether +0.4 HOTA, +0.4 IDF1 and 31 fewer ID switches at 1280×736, and +1.1 HOTA, +2.0 IDF1 and 69 fewer ID switches at 640, the same numbers the #25 prototype measured.
 
-The detector has more to give in the low band: at score ≥ 0.1, the 1280×736 set reaches 61.7% recall (67.6% precision), against 54.6% at ≥ 0.25. ByteTrack's second pass only converts about 2.4 points of that.
+At 640 Tether is still 0.6 HOTA, 1.0 IDF1 and 8 ID switches behind ByteTrack; the cause is not known yet. The ablations found that ByteTrack's Kalman filter on top of the new matching order gives +0.8 HOTA and +2.2 IDF1 at 1280×736, but 172 more ID switches, so it is a separate decision.
+
+The detector has more to give in the low band: at score ≥ 0.1, the 1280×736 set reaches 61.7% recall (67.6% precision), against 54.6% at ≥ 0.25. ByteTrack's second pass only converts about 2.4 points of that, and Tether's the same (52.6% to 55.0% tracked recall).
 
 ## ByteTrack settings
 
@@ -69,6 +71,7 @@ Ultralytics' BYTETracker (`ultralytics==8.4.181`, `lap==0.5.12`), run by `tether
 - **No output filtering.** ByteTrack's own MOT17 script drops boxes wider than 1.6× their height and under 10 px²; that's post-processing, not tracking, so neither tracker gets it.
 - Track boxes are ByteTrack's Kalman-filtered boxes; Tether reports the matched detection's box.
 - Both match confirmed tracks before new (unconfirmed) ones.
+- Both give still-unmatched tracks a second pass against detections scored between 0.1 and 0.25, at IoU ≥ 0.5 (Tether's `LOW_SCORE` and `LOW_MIN_IOU`). Only tracks matched last frame get it, and those detections never start a track.
 
 ## Detector ceiling (YOLO26n @ 1280×736)
 
