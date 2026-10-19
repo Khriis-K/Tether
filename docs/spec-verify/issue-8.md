@@ -60,6 +60,13 @@ Test: test_evaluates_the_split_and_saves_the_results
 Mutation: the results file is not written.
 Result: VERIFIED
 
+### After code review
+The gap tally was rewritten (per-clip scores summed, instead of one shared dict), and a no-deletion baseline became a default. Rerun on the new code:
+Mutation: recovery divided by all gaps (C4e again, on the new tally). Killed by test_a_tracker_with_no_tracks_scores_zero_and_has_no_recovery_rate.
+Mutation: only the first clip's gap counts are kept. Survived at first (the test only checked the rate, which was 1/1 = 2/2); killed after test_tether_recovers_a_steadily_moving_drone_across_one_second_gaps began asserting both clips' gaps are counted.
+Mutation: the baseline is dropped from the defaults. Survived at first (every test passed its rates explicitly); killed by the new test_by_default_the_tool_runs_a_no_deletion_baseline_beside_20_percent.
+Result: VERIFIED
+
 ### Supporting behavior
 Mutation: labels read by `gt_rect` instead of `exist` (the real labels leave boxes on some absent frames). Killed by test_frames_marked_not_existing_have_no_drone_whatever_their_rect_says.
 Mutation: no check that labels and video have the same length. Killed by test_a_clip_whose_labels_and_video_disagree_on_length_is_refused.

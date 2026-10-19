@@ -42,6 +42,8 @@ DEFAULT_WORK_DIR = Path("results/antiuav")
 DRONE = 0  # class ID given to the labeled drone boxes
 MIN_IOU = 0.5  # a track holds the drone only if it overlaps the labeled box at least this much
 SETTLE_SECONDS = 2.0  # detections given before each gap, so the track is confirmed and moving
+DROP_RATES = (0.0, 0.2)  # 0 is the baseline: IDs lost with nothing deleted
+GAP_SECONDS = (0.25, 0.5, 1.0)
 
 
 @dataclass(frozen=True)
@@ -94,11 +96,17 @@ def blank(boxes: list[Box | None], gaps: list[tuple[int, int]]) -> list[Box | No
     return [None if f in in_gap else b for f, b in enumerate(boxes)]
 
 
+def holders(drone: Box | None, tracks: list[Track]) -> set[int]:
+    """IDs of the tracks holding the drone on this frame: "tracked", and IoU of at least MIN_IOU with it."""
+    if drone is None:
+        return set()
+    return {t.id for t in tracks if t.status == "tracked" and iou(t.box, drone) >= MIN_IOU}
+
+
 def id_kept(gt: list[Box | None], given: list[Box | None], frames: list[list[Track]]) -> dict:
     """Of the frames whose box was given to the tracker, how many the most common holding ID holds."""
     scored = [f for f, b in enumerate(given) if b is not None]
-    holders = [_holders(gt[f], frames[f]) for f in scored]
-    counts = Counter(i for ids in holders for i in ids)
+    counts = Counter(i for f in scored for i in holders(gt[f], frames[f]))
     kept = counts.most_common(1)[0][1] if counts else 0
     return {"kept": kept, "frames": len(scored)}
 
@@ -114,16 +122,16 @@ def gap_recovery(gt: list[Box | None], gaps: list[tuple[int, int]], frames: list
     result = {"gaps": 0, "held_before": 0, "recovered": 0, "center_errors": [], "ious": []}
     for k, (start, end) in enumerate(gaps):
         limit = gaps[k + 1][0] if k + 1 < len(gaps) else len(gt)
-        back = next((f for f in range(end, limit) if gt[f] is not None), None)
-        if gt[start - 1] is None or back is None:
+        returned = next((f for f in range(end, limit) if gt[f] is not None), None)
+        if gt[start - 1] is None or returned is None:
             continue
         result["gaps"] += 1
-        before = _holders(gt[start - 1], frames[start - 1])
+        before = holders(gt[start - 1], frames[start - 1])
         if not before:
             continue
         result["held_before"] += 1
-        result["recovered"] += bool(before & _holders(gt[back], frames[back]))
-        held = min(before)
+        result["recovered"] += bool(before & holders(gt[returned], frames[returned]))
+        held = min(before)  # if duplicate tracks both held it, the oldest one's prediction
         for f in range(start, end):
             pred = next((t.predicted_box for t in frames[f - 1] if t.id == held), None)
             if gt[f] is not None and pred is not None:
@@ -133,8 +141,8 @@ def gap_recovery(gt: list[Box | None], gaps: list[tuple[int, int]], frames: list
 
 
 def evaluate(dataset_dir: str | Path, work_dir: str | Path, tracker_cmd: str, name: str,
-             split: str = "test", drop_rates: Sequence[float] = (0.2,),
-             gap_seconds: Sequence[float] = (0.25, 0.5, 1.0), seed: int = 0) -> dict:
+             split: str = "test", drop_rates: Sequence[float] = DROP_RATES,
+             gap_seconds: Sequence[float] = GAP_SECONDS, seed: int = 0) -> dict:
     """Run every condition on every clip of `split` and save to `work_dir/trackers/<name>/results.json`.
 
     Detection files go to `work_dir/detections/<condition>/`, so other trackers
@@ -147,7 +155,8 @@ def evaluate(dataset_dir: str | Path, work_dir: str | Path, tracker_cmd: str, na
         raise FileNotFoundError(f"no clips in {Path(dataset_dir) / split}")
 
     def run(condition: str, clip: Clip, given: list[Box | None]) -> list[list[Track]]:
-        dets, tracks = work_dir / "detections" / condition / f"{clip.name}.jsonl", out_dir / condition / f"{clip.name}.jsonl"
+        dets = work_dir / "detections" / condition / f"{clip.name}.jsonl"
+        tracks = out_dir / condition / f"{clip.name}.jsonl"
         for d in (dets.parent, tracks.parent):
             d.mkdir(parents=True, exist_ok=True)
         save_detections(dets, to_detections(given))
@@ -171,16 +180,17 @@ def evaluate(dataset_dir: str | Path, work_dir: str | Path, tracker_cmd: str, na
     gap_results = []
     for seconds in gap_seconds:
         print(f"gaps of {seconds:g} s", flush=True)
-        total = {"gaps": 0, "held_before": 0, "recovered": 0, "center_errors": [], "ious": []}
+        scores = []
         for clip in clips:
             gaps = place_gaps(len(clip.boxes), seconds_to_frames(seconds, clip.fps),
                               seconds_to_frames(SETTLE_SECONDS, clip.fps))
             given = blank(clip.boxes, gaps)
-            for key, value in gap_recovery(clip.boxes, gaps, run(f"gap-{seconds}s", clip, given)).items():
-                total[key] += value
-        errors, ious = total.pop("center_errors"), total.pop("ious")
-        gap_results.append({"gap_seconds": seconds, **total,
-                            "recovery": _percent(total["recovered"], total["held_before"]),
+            scores.append(gap_recovery(clip.boxes, gaps, run(f"gap-{seconds}s", clip, given)))
+        counts = {key: sum(s[key] for s in scores) for key in ("gaps", "held_before", "recovered")}
+        errors = [e for s in scores for e in s["center_errors"]]
+        ious = [v for s in scores for v in s["ious"]]
+        gap_results.append({"gap_seconds": seconds, **counts,
+                            "recovery": _percent(counts["recovered"], counts["held_before"]),
                             "prediction_frames": len(errors),
                             "prediction_error_px": float(np.mean(errors)) if errors else None,
                             "prediction_iou": float(np.mean(ious)) if ious else None})
@@ -197,13 +207,6 @@ def evaluate(dataset_dir: str | Path, work_dir: str | Path, tracker_cmd: str, na
 def _corners(rect: list[float]) -> Box:
     x, y, w, h = (float(v) for v in rect)
     return (x, y, x + w, y + h)
-
-
-def _holders(drone: Box | None, tracks: list[Track]) -> set[int]:
-    """IDs of the tracks holding the drone on this frame."""
-    if drone is None:
-        return set()
-    return {t.id for t in tracks if t.status == "tracked" and iou(t.box, drone) >= MIN_IOU}
 
 
 def _center_distance(a: Box, b: Box) -> float:
@@ -236,9 +239,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("antiuav", help="the unzipped Anti-UAV300 folder (the one holding train/, val/, test/)")
     parser.add_argument("--split", default="test", choices=["train", "val", "test"],
                         help="clips to score (default test; keep it unseen if you tune on train or val)")
-    parser.add_argument("--drop-rates", type=float, nargs="*", default=[0.2],
-                        help="share of boxes deleted at random, one run each (default 0.2)")
-    parser.add_argument("--gap-seconds", type=float, nargs="*", default=[0.25, 0.5, 1.0],
+    parser.add_argument("--drop-rates", type=float, nargs="*", default=list(DROP_RATES),
+                        help="share of boxes deleted at random, one run each (default 0 0.2; "
+                             "0 is the baseline: IDs lost with nothing deleted)")
+    parser.add_argument("--gap-seconds", type=float, nargs="*", default=list(GAP_SECONDS),
                         help="gap lengths in seconds, one run each (default 0.25 0.5 1.0)")
     parser.add_argument("--seed", type=int, default=0, help="seed for the random deletion (default 0)")
     parser.add_argument("--tracker", default=f'"{sys.executable}" -m tether.cli',

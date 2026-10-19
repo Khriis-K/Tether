@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import pytest
 
-from tether.antiuav import (DRONE, Clip, blank, drop_random, evaluate, gap_recovery, id_kept, load_clip,
+from tether.antiuav import (DRONE, Clip, blank, drop_random, evaluate, gap_recovery, id_kept, load_clip, main,
                             place_gaps, seconds_to_frames, to_detections)
 from tether.formats import Track, load_detections
 
@@ -306,13 +306,18 @@ def dataset(tmp_path):
 def test_evaluates_the_split_and_saves_the_results(tmp_path, dataset):
     work = tmp_path / "work"
 
-    results = evaluate(dataset, work, TETHER, "tether", split="test", drop_rates=[0.2], gap_seconds=[1.0])
+    results = evaluate(dataset, work, TETHER, "tether", split="test", drop_rates=[0.0, 0.2], gap_seconds=[1.0])
 
     assert results["tracker"] == "tether"
     assert results["split"] == "test" and results["clips"] == 2
-    (drop,) = results["random_deletion"]
-    assert drop["drop_rate"] == 0.2
-    assert drop["frames"] > 0 and 0 <= drop["kept"] <= drop["frames"]
+    baseline, drop = results["random_deletion"]
+    # Nothing deleted: every labeled frame is scored (120 + 90), and Tether holds the drone
+    # with one ID on all but each clip's first 2 frames, before it confirms the track.
+    assert (baseline["drop_rate"], baseline["frames"], baseline["kept"]) == (0.0, 210, 206)
+    # 20% deleted: exactly the frames given to the tracker are scored.
+    given = sum(1 for clip in ("clip-a", "clip-b")
+                for dets in load_detections(work / "detections" / "drop-0.2-seed0" / f"{clip}.jsonl") if dets)
+    assert drop["drop_rate"] == 0.2 and drop["frames"] == given < 210
     assert drop["id_kept"] == pytest.approx(100 * drop["kept"] / drop["frames"])
     (gap,) = results["gaps"]
     assert gap["gap_seconds"] == 1.0
@@ -325,10 +330,12 @@ def test_tether_recovers_a_steadily_moving_drone_across_one_second_gaps(tmp_path
                        drop_rates=[0.0], gap_seconds=[1.0])
 
     (gap,) = results["gaps"]
-    assert gap["held_before"] >= 1
+    assert gap["gaps"] == gap["held_before"] == gap["recovered"] == 2  # one in each clip
     assert gap["recovery"] == pytest.approx(100.0)
-    assert gap["prediction_frames"] > 0
-    assert gap["prediction_error_px"] >= 0.0
+    # Each clip has one held gap of 20 frames, all labeled.
+    assert gap["prediction_frames"] == 40
+    # Constant-velocity flight is what a constant-velocity filter predicts exactly.
+    assert gap["prediction_error_px"] == pytest.approx(0.0, abs=0.5)
 
 
 def test_runs_with_the_same_seed_give_the_same_results(tmp_path, dataset):
@@ -350,6 +357,15 @@ def test_separate_runs_of_the_tool_delete_the_same_boxes(tmp_path, dataset):
         assert first.read_bytes() == again.read_bytes()
     assert (json.loads((tmp_path / "a" / "trackers" / "tether" / "results.json").read_text(encoding="utf-8"))
             == json.loads((tmp_path / "b" / "trackers" / "tether" / "results.json").read_text(encoding="utf-8")))
+
+
+def test_by_default_the_tool_runs_a_no_deletion_baseline_beside_20_percent(tmp_path, dataset):
+    work = tmp_path / "work"
+
+    main([str(dataset), "--work-dir", str(work), "--gap-seconds"])
+
+    saved = json.loads((work / "trackers" / "tether" / "results.json").read_text(encoding="utf-8"))
+    assert [d["drop_rate"] for d in saved["random_deletion"]] == [0.0, 0.2]
 
 
 def test_gaps_are_blanked_using_each_clips_own_frame_rate(tmp_path):
