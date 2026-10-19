@@ -11,7 +11,7 @@ MIN_IOU = 0.3  # pairs that overlap less than this are never matched by IoU
 MAX_CENTER_DISTANCE = 4.0  # in track box sizes; farther pairs are never matched by distance
 
 # Cost of a pair that can't match. It exceeds any total of valid costs (each is
-# at most 1 for IoU, MAX_CENTER_DISTANCE for distance), so the solver first
+# at most 1 for IoU, the distance gate for distance), so the solver first
 # maximizes the number of valid pairs.
 _INVALID_COST = 1e6
 
@@ -47,15 +47,18 @@ def match(track_boxes: list[Box], det_boxes: list[Box],
 
 
 def match_by_distance(track_boxes: list[Box], det_boxes: list[Box],
-                      allowed: np.ndarray | None = None) -> list[tuple[int, int]]:
+                      allowed: np.ndarray | None = None,
+                      max_distance: float | list[float] = MAX_CENTER_DISTANCE) -> list[tuple[int, int]]:
     """Like `match`, but by center distance, for boxes that may not overlap at all.
 
-    A pair is valid when its center_distance is at most MAX_CENTER_DISTANCE.
+    A pair is valid when its center_distance is at most `max_distance`: one gate
+    for every track, or one per track.
     """
     if not track_boxes or not det_boxes:
         return []
     dists = np.array([[center_distance(t, d) for d in det_boxes] for t in track_boxes])
-    return _assign(dists, dists <= MAX_CENTER_DISTANCE, allowed)
+    gates = np.asarray(max_distance, dtype=float).reshape(-1, 1)
+    return _assign(dists, dists <= gates, allowed)
 
 
 def _assign(cost: np.ndarray, valid: np.ndarray,

@@ -83,6 +83,13 @@ The Kalman filter's **process noise** says how much the true motion may change b
 ### Center-distance fallback
 When boxes don't overlap, IoU is 0 whether they're near or far, so it can't pick between them. Center distance can. In Tether it is used only for tracks seen once, which have no velocity yet: a second matching pass by the distance between box centers, measured in box sizes and capped.
 
+### Growing search gate
+A searching track's prediction drifts further from its object every frame it coasts, so a fixed match threshold eventually can't reach it. A growing gate widens the allowed center distance with each missed frame (`r0 + k·frames_since_seen`, in box sizes).
+
+**In Tether:** `--search-gate` / `--search-gate-growth`, off by default. On Anti-UAV it raises 1 s gap recovery from 31% to 88%, but on MOT17 every setting that helps costs HOTA and ID switches.
+
+**Gotcha:** the gate is a recall-vs-precision trade, and the cost only shows up where there are other objects to grab. With one target per clip, a wide gate can't pick the wrong box, so Anti-UAV alone will always say "wider is better". A crowded benchmark is the real test.
+
 ---
 
 ## Evaluation
