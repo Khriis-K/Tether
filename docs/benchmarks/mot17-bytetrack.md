@@ -1,30 +1,30 @@
 # MOT17: Tether vs. ByteTrack
 
-Run 2026-10-18 for #7; Tether rows rerun 2026-10-18 for #23, after it began matching confirmed tracks before tentative ones (Tether before #23: 35.6 HOTA / 40.5 IDF1 / 1270 ID switches at 1280×736, 27.8 / 29.2 / 948 at 640), again for #26, after it gained ByteTrack's low-score pass (Tether before #26: 40.9 / 48.6 / 779 at 1280×736, 31.7 / 34.9 / 626 at 640), and again for #35, after the capped search gate went on by default (Tether before #35: 41.3 / 49.0 / 748 at 1280×736, 32.8 / 36.9 / 557 at 640). Both trackers read the same unfiltered detection files (every detection down to score 0.1) and apply their own thresholds. All 7 MOT17 train videos (FRCNN copies), scored by `tether-mot17` with TrackEval 1.3.0, MOT17's official preprocessing, no output filtering for either tracker.
+Run 2026-10-18 for #7; Tether rows rerun 2026-10-18 for #23, after it began matching confirmed tracks before tentative ones (Tether before #23: 35.6 HOTA / 40.5 IDF1 / 1270 ID switches at 1280×736, 27.8 / 29.2 / 948 at 640), again for #26, after it gained ByteTrack's low-score pass (Tether before #26: 40.9 / 48.6 / 779 at 1280×736, 31.7 / 34.9 / 626 at 640), and again for #35, after the capped, size-checked search gate went on by default (Tether before #35: 41.3 / 49.0 / 748 at 1280×736, 32.8 / 36.9 / 557 at 640). Both trackers read the same unfiltered detection files (every detection down to score 0.1) and apply their own thresholds. All 7 MOT17 train videos (FRCNN copies), scored by `tether-mot17` with TrackEval 1.3.0, MOT17's official preprocessing, no output filtering for either tracker.
 
 ## Results
 
 | Tracker | Detections | HOTA | IDF1 | ID switches | Recall | Precision |
 |---|---|---|---|---|---|---|
-| Tether | YOLO26n @ 1280×736 | 41.3 | 49.2 | 733 | 55.1% | 85.4% |
+| Tether | YOLO26n @ 1280×736 | 41.5 | 49.4 | 731 | 55.1% | 85.5% |
 | ByteTrack | YOLO26n @ 1280×736 | 40.9 | 48.6 | 800 | 54.0% | 86.1% |
-| Tether | YOLO26n @ 640 | 32.9 | 37.3 | 531 | 35.0% | 87.2% |
+| Tether | YOLO26n @ 640 | 33.1 | 37.6 | 529 | 34.9% | 87.2% |
 | ByteTrack | YOLO26n @ 640 | 33.5 | 37.9 | 549 | 33.9% | 87.8% |
 
 The 1280×736 rows are the headline (ADR 0002). Recall and precision are CLEAR's, at IoU 0.5.
 
 **Against the SPEC targets** (HOTA within 2 points, IDF1 and ID switches at least as good):
 
-- **1280×736:** all three are met: HOTA 41.33 vs 40.86, IDF1 49.23 vs 48.63, ID switches 733 vs 800.
-- **640:** HOTA (0.5 behind) and ID switches (531 vs 549) are met, but IDF1 is 0.6 lower (37.30 vs 37.91). Before #35, Tether also made 8 more ID switches than ByteTrack here (557).
+- **1280×736:** all three are met: HOTA 41.46 vs 40.86, IDF1 49.38 vs 48.63, ID switches 731 vs 800.
+- **640:** HOTA (0.4 behind) and ID switches (529 vs 549) are met, but IDF1 is 0.3 lower (37.62 vs 37.91). Before #35, Tether also made 8 more ID switches than ByteTrack here (557).
 
 HOTA per video:
 
 | Tracker | Detections | 02 | 04 | 05 | 09 | 10 | 11 | 13 |
 |---|---|---|---|---|---|---|---|---|
-| Tether | YOLO26n @ 1280×736 | 27.5 | 45.6 | 42.0 | 42.9 | 35.8 | 48.9 | 37.7 |
+| Tether | YOLO26n @ 1280×736 | 27.5 | 45.6 | 42.7 | 44.6 | 35.9 | 49.1 | 37.5 |
 | ByteTrack | YOLO26n @ 1280×736 | 31.2 | 43.9 | 41.9 | 46.3 | 33.2 | 51.1 | 35.1 |
-| Tether | YOLO26n @ 640 | 23.9 | 31.5 | 41.9 | 36.9 | 30.7 | 48.1 | 27.8 |
+| Tether | YOLO26n @ 640 | 23.9 | 31.5 | 42.3 | 39.0 | 30.8 | 48.1 | 27.8 |
 | ByteTrack | YOLO26n @ 640 | 28.0 | 31.8 | 43.2 | 42.9 | 26.1 | 47.6 | 26.7 |
 
 ## Where Tether lost: matching order, not low-score detections

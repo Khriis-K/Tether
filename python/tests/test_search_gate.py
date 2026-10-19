@@ -119,8 +119,9 @@ def returning_outside_iou_range():
     return confirmed_then_missing(1) + [[det(returned)]], returned
 
 
-# A much smaller box with the same center: IoU below MIN_IOU, but distance 0, so any gate above 0 takes it.
-CENTERED = (X + 8.0, Y + 8.0, X + 12.0, Y + 12.0)
+# A narrow box with the same center and height: IoU below MIN_IOU, but distance 0 and the
+# same size, so any gate above 0 takes it.
+CENTERED = (X + 8.0, Y, X + 12.0, Y + SIZE)
 
 
 def test_gate_is_on_by_default():

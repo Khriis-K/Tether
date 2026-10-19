@@ -17,7 +17,10 @@ track is predicted to be this frame, in this order:
    without the cap every gate that helped Anti-UAV cost MOT17 HOTA and ID
    switches (docs/benchmarks/antiuav-search-gate-cap.md). Tentative tracks
    don't count, since the one a missed detection started is what the gate
-   takes back.
+   takes back. Center distance ignores size, so a detection more than
+   SEARCH_GATE_MAX_SIZE_RATIO times taller or shorter than the track's last
+   observed box is never a gate match: otherwise a track behind someone takes
+   the box of the person walking in front.
 4. Tentative tracks against the high detections left over, by IoU. Matching them
    after confirmed ones keeps a new track (say, from a duplicate box) from taking
    the detection of the confirmed track it overlaps.
@@ -41,11 +44,10 @@ prediction steps forward; 1 (the default) coasts at the last velocity, 0 holds
 the last predicted position.
 """
 
+import math
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-
-import math
 
 import numpy as np
 
@@ -66,6 +68,8 @@ SEARCH_GATE = 1.5  # after one missed frame the gate is SEARCH_GATE + SEARCH_GAT
 SEARCH_GATE_GROWTH = 0.25  # added per missed frame
 # The gate is at most this times the distance to the nearest other confirmed track; inf is no cap.
 SEARCH_GATE_CAP = 0.5  # the issue's untuned starting point: two tracks' gates can't overlap
+# A gate match's detection is at most this many times taller or shorter than the track's last box.
+SEARCH_GATE_MAX_SIZE_RATIO = 1.5
 # Velocity is multiplied by this each frame a track goes unmatched; 1 is undamped, 0 holds still.
 COAST_DAMPING = 1.0
 
@@ -178,7 +182,7 @@ class Tracker:
         return self._search_gate + self._search_gate_growth * track.frames_since_seen
 
     def _capped_gate(self, track: _TrackState) -> float:
-        if self._search_gate_cap == math.inf:
+        if self._search_gate_cap == math.inf:  # no cap: skip the scan over every track
             return self._gate(track)
         nearest = min((center_distance(track.motion.box, other.motion.box)
                        for other in self._tracks if other is not track and other.confirmed),
@@ -187,7 +191,9 @@ class Tracker:
 
     def _by_search_gate(self, tracks: list[_TrackState], boxes: list[Box],
                         allowed: np.ndarray) -> list[tuple[int, int]]:
-        return match_by_distance([t.motion.box for t in tracks], boxes, allowed,
+        same_size = np.array([[_same_size(t.box, b) for b in boxes] for t in tracks], dtype=bool)
+        return match_by_distance([t.motion.box for t in tracks], boxes,
+                                 allowed & same_size.reshape(allowed.shape),
                                  max_distance=[self._capped_gate(t) for t in tracks])
 
     def _match_unmatched(self, wanted: Callable[[_TrackState], bool], matcher: _Matcher,
@@ -210,6 +216,12 @@ _Matcher = Callable[[list[_TrackState], list[Box], np.ndarray], list[tuple[int, 
 
 def _by_iou(min_iou: float = MIN_IOU) -> _Matcher:
     return lambda tracks, boxes, allowed: match([t.motion.box for t in tracks], boxes, allowed, min_iou)
+
+
+def _same_size(last: Box, det: Box) -> bool:
+    """Heights within SEARCH_GATE_MAX_SIZE_RATIO of each other; a zero height matches nothing."""
+    a, b = last[3] - last[1], det[3] - det[1]
+    return a > 0 and b > 0 and max(a / b, b / a) <= SEARCH_GATE_MAX_SIZE_RATIO
 
 
 def _by_one_hit_distance(tracks: list[_TrackState], boxes: list[Box], allowed: np.ndarray) -> list[tuple[int, int]]:

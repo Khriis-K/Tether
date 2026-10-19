@@ -38,7 +38,7 @@ Test: test_cli_passes_the_cap_to_the_tracker
 Mutation: the CLI parses the flag but doesn't pass it to `Tracker`.
 Result: VERIFIED
 
-### Criterion C5: the gate is on by default (MOT17 held at both input sizes)
+### Criterion C5: the gate is on by default
 Test: test_search_gate.py::test_gate_is_on_by_default (replaces test_gate_is_off_by_default, which encoded the old default)
 Mutation: the defaults reverted to off (`SEARCH_GATE = 0.0`, `SEARCH_GATE_GROWTH = 0.0`).
 Result: VERIFIED. The first mutation tried, `SEARCH_GATE = 0.0` alone, survived. That mutation leaves the gate on (growth 0.25 still opens it around a detection at distance 0), so the default being on isn't what it breaks.
@@ -48,5 +48,26 @@ Test: test_cap_is_on_by_default
 Mutation: default `SEARCH_GATE_CAP = math.inf`.
 Result: VERIFIED
 
+### Criterion C7: a much bigger or smaller detection is never a gate match
+Test: test_search_gate_size.py::test_detection_much_bigger_or_smaller_starts_a_new_track (2x and 0.5x)
+Mutation: the size check removed from `_by_search_gate`; then, separately, checked in one direction only (`b / a <= ratio`).
+Result: VERIFIED (both mutations caught; the second only by the 0.5x case)
+
+### Criterion C7b: a modest size change still re-matches
+Test: test_search_gate_size.py::test_modest_size_change_still_rematches
+Mutation: `SEARCH_GATE_MAX_SIZE_RATIO = 1.1`.
+Result: VERIFIED
+
+### Criterion C7c: size is compared to the last observed box, not the coasted prediction
+Test: test_search_gate_size.py::test_size_is_compared_to_the_last_observed_box_not_the_coasted_prediction
+Mutation: `_same_size(t.motion.box, b)` for `_same_size(t.box, b)`.
+Result: VERIFIED. This test passes before the fix too, because without a size check there's nothing to compare. It guards how the check compares, so the mutation is what counts.
+
+### Criterion C2-#29: a zero gate never matches (fixture changed)
+Test: test_search_gate.py::test_zero_gate_never_matches_even_a_detection_centered_on_the_prediction
+Mutation: a zero gate counted as on (`self._gate(t) >= 0`).
+Result: VERIFIED. The fixture `CENTERED` was a 4x4 box on a 20x20 track. Once the size check went in, it would have made this test pass whatever the gate did, so it is now a narrow box of the same height (IoU still 0.2).
+
 ## Verification results
-9/9 criteria VERIFIED.
+13/13 criteria VERIFIED.
+Measurement criteria (cap fraction tuned on Anti-UAV val, MOT17 at both input sizes, how often the cap binds, the default decision): UNVALIDATABLE by this technique; reported in `docs/benchmarks/antiuav-search-gate-cap.md` for human review.

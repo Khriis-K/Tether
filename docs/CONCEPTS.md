@@ -97,6 +97,8 @@ A fixed gate can't be right for both a lone object and a crowd. Capping it at a 
 
 **Gotcha:** "alone" means alone among the tracker's tracks, not alone in the world. On Anti-UAV there is one drone, yet the cap binds in about 30% of gate checks, because the tracker's own duplicate IDs of the drone sit nearby.
 
+**Gotcha:** center distance ignores size. A big box walking in front of a smaller, occluded track can have its center inside that track's gate, which IoU would never allow. Tether's gate also requires the heights to be within 1.5 times of each other, against the track's last *observed* box: a coasted prediction's size drifts with the size velocity (MOT17-09 had predictions 1211 px tall, and one with negative height).
+
 ---
 
 ### Velocity damping while coasting
