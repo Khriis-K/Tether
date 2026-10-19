@@ -158,7 +158,7 @@ class Tracker:
                 survivors.append(track)
 
         for track in survivors:
-            track.motion.predict(self._coast_damping if track.frames_since_seen else 1.0)
+            track.motion.predict(self._coast_damping if track.frames_since_seen > 0 else 1.0)
         self._tracks = sorted(survivors, key=lambda t: t.id)
         return [t.snapshot() for t in self._tracks]
 
