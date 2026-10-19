@@ -93,7 +93,9 @@ A standard pedestrian-tracking benchmark from MOTChallenge: crowded street video
 ### Anti-UAV
 A dataset of drone videos with labeled drone boxes. Drones are small, fast, and often in single-target clips, so it tests different things than crowded MOT17 does.
 
-**In Tether:** we don't run a detector on it. We feed in the *labeled* boxes, delete some on purpose, and see whether the tracker recovers.
+**In Tether:** we don't run a detector on it. We feed in the *labeled* boxes, delete some on purpose, and see whether the tracker recovers (`tether-antiuav`, results in `docs/benchmarks/antiuav-dropout.md`). A track only "has" the drone if its box overlaps the label with IoU ≥ 0.5; otherwise, with one drone per clip, a track that never dies would look perfect.
+
+**Gotcha:** the motion a tracker sees is motion *in the image*, which includes the camera's. Anti-UAV300 is filmed by a pan-tilt camera that keeps re-centering on the drone, so the drone swings back and forth across the frame in a sawtooth even when it flies straight. A constant-velocity model predicts one frame ahead fine, but coasting through a few missed frames sends it the wrong way whenever the camera snaps back.
 
 ### HOTA (Higher Order Tracking Accuracy)
 A tracking metric that balances two things: how well you **detect** objects, and how well you **associate** them over time (keeping IDs right). It's the geometric mean of the two, so you can't score well by being great at one and bad at the other.
