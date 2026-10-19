@@ -18,7 +18,7 @@ The change: a matching stage where searching tracks still unmatched after IoU ar
 
 Gap columns are recovery rates (the share of held gaps where the same ID holds the drone after). ID kept is scored over 58,302 frames (0%) and 46,788 (20%); 1 s gaps over 866–885 held gaps of 928.
 
-- **ByteTrack loses the drone just like Tether does.** It is within 1–7 points of Tether's baseline on every test, so the failure isn't specific to Tether. (ByteTrack's prediction error isn't comparable: our adapter outputs only tracked tracks, so only the first frame of each gap is measured.)
+- **ByteTrack loses the drone just like Tether does.** It is 0.6–7 points above Tether's baseline on every test, so the failure isn't specific to Tether. (ByteTrack's prediction error isn't comparable: our adapter outputs only tracked tracks, so only the first frame of each gap is measured.)
 - **The gate meets the 1 s recovery target on val (88.4% vs 80%), but not ID kept (61.1% vs 95%).** The best ID kept is still a long way below the 94.2% reachable on test (not computed for val).
 
 ## Tuning on val
@@ -44,7 +44,7 @@ Val with 0% and 20% deleted, plus 1 s gaps; MOT17 at 1280×736. The gate is in u
 
 At 640, the two settings checked also regress: gate 0.5 + 0 gives 32.37 HOTA / 36.57 IDF1 / 598 ID switches, and 1.0 + 0.25 gives 30.33 / 33.63 / 840, against main's 32.82 / 36.95 / 557.
 
-- **On Anti-UAV, wider is better everywhere in the grid.** The starting gate r0 mostly drives ID kept, and the growth k drives gap recovery.
+- **On Anti-UAV, wider is better almost everywhere in the grid** (one exception: 1.5 + 0.1 gives 58.3% ID kept at 0% deleted, against 58.4% for 1.5 + 0.05). The starting gate r0 mostly drives ID kept, and the growth k drives gap recovery.
 - **On MOT17, every gate costs something.** Even the smallest (0.5, no growth) loses 0.25 HOTA and adds 17 ID switches at 1280×736, and 0.45 HOTA and 41 ID switches at 640. With growth the cost climbs fast: 1.0 + 0.25 adds 416 ID switches at 1280×736.
 
 ### Variants that didn't fix the MOT17 cost
@@ -74,7 +74,7 @@ Each time the drone's holder changes, here is what the old holder was doing (val
 | main | 1,418 | 1,334 | 15 | 18 | 15 |
 | gate 1.5 + 0.25 | 797 | 739 | 328 | 9 | 15 |
 
-The gate almost halves the IDs, but most handovers still happen 2–5 frames into a search. That's when the tentative track from the missed detection gets confirmed (3 hits). So the searching track couldn't catch the drone even inside a gate of 1.75–2.75 box sizes. The coasted prediction moves away from the drone after a sawtooth reversal, at about the reversal speed. That's what velocity damping (shortlist #2 in [camera-motion.md](../research/camera-motion.md)) would address, and it would make a smaller gate (one MOT17 might tolerate) enough. The single-frame miss distance, from the old holder's prediction to the drone, is 0.5 / 0.95 / 2.8 / 6.4 box sizes at the 10th / 50th / 90th / 99th percentile.
+The gate almost halves the IDs, but most handovers still happen 2–5 frames into a search. That's when the tentative track from the missed detection would get confirmed (3 hits; the script doesn't check the new holder's hits). So the searching track likely couldn't catch the drone even inside a gate of 1.75–2.5 box sizes (the counts are the frames missed as reported after the frame, one more than when the gate was applied). The coasted prediction moves away from the drone after a sawtooth reversal, at about the reversal speed. That's what velocity damping (shortlist #2 in [camera-motion.md](../research/camera-motion.md)) would address, and it would make a smaller gate (one MOT17 might tolerate) enough. The single-frame miss distance, from the old holder's prediction to the drone, is 0.5 / 0.95 / 2.8 / 6.4 box sizes at the 10th / 50th / 90th / 99th percentile.
 
 The new "1 frame missed" handovers (328) are another *confirmed* track taking the drone, most likely an older duplicate ID that is also searching and happens to be closer.
 

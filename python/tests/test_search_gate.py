@@ -8,7 +8,7 @@ before. Scripted, stationary objects: the prediction stays where the box was.
 
 from tether.cli import main
 from tether.formats import Detection, load_tracks, save_detections
-from tether.matching import MIN_IOU, iou
+from tether.matching import MIN_IOU, iou, match_by_distance
 from tether.tracker import Tracker
 
 SIZE = 20.0
@@ -43,6 +43,12 @@ def run(frames, search_gate=SEARCH_GATE, search_gate_growth=SEARCH_GATE_GROWTH):
 def only(tracks):
     assert len(tracks) == 1
     return tracks[0]
+
+
+def by_box(tracks, box):
+    matches = [t for t in tracks if t.box == box and t.frames_since_seen == 0]
+    assert len(matches) == 1
+    return matches[0]
 
 
 def test_searching_track_rematches_a_detection_outside_iou_range_but_inside_the_gate():
@@ -106,12 +112,6 @@ def test_searching_track_takes_its_detection_back_from_the_tentative_track_it_st
     assert by_box(outputs[-1], jumped).status == "tracked"
 
 
-def by_box(tracks, box):
-    matches = [t for t in tracks if t.box == box and t.frames_since_seen == 0]
-    assert len(matches) == 1
-    return matches[0]
-
-
 def returning_outside_iou_range():
     """A searching track and a detection inside its gate after one missed frame, but not overlapping."""
     returned = box_at(X + 1.25 * SIZE)
@@ -154,8 +154,6 @@ def test_cli_passes_the_gate_settings_to_the_tracker(tmp_path):
 
 
 def test_match_by_distance_applies_each_track_its_own_gate():
-    from tether.matching import match_by_distance
-
     tracks = [box_at(0.0), box_at(1000.0)]
     # Detection 0 is 2 box sizes from track 0; detection 1 is 2 box sizes from track 1.
     dets = [box_at(2 * SIZE), box_at(1000.0 + 2 * SIZE), box_at(5000.0)]

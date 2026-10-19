@@ -98,10 +98,10 @@ class Tracker:
                  min_score: float = MIN_SCORE, search_gate: float = SEARCH_GATE,
                  search_gate_growth: float = SEARCH_GATE_GROWTH) -> None:
         self._confirm_frames = confirm_frames
+        self._max_missing_frames = max_missing_frames
+        self._min_score = min_score
         self._search_gate = search_gate
         self._search_gate_growth = search_gate_growth
-        self._min_score = min_score
-        self._max_missing_frames = max_missing_frames
         self._tracks: list[_TrackState] = []
         self._next_id = 1
 
@@ -124,7 +124,7 @@ class Tracker:
                                        self._by_search_gate, detections, high_allowed, pairs)
         pairs += self._match_unmatched(lambda t: not t.confirmed, _by_iou(), detections,
                                        high_allowed, pairs)
-        pairs += self._match_unmatched(lambda t: t.hits == 1, _by_distance, detections,
+        pairs += self._match_unmatched(lambda t: t.hits == 1, _by_one_hit_distance, detections,
                                        high_allowed, pairs)
 
         survivors = []
@@ -186,5 +186,5 @@ def _by_iou(min_iou: float = MIN_IOU) -> _Matcher:
     return lambda tracks, boxes, allowed: match([t.motion.box for t in tracks], boxes, allowed, min_iou)
 
 
-def _by_distance(tracks: list[_TrackState], boxes: list[Box], allowed: np.ndarray) -> list[tuple[int, int]]:
+def _by_one_hit_distance(tracks: list[_TrackState], boxes: list[Box], allowed: np.ndarray) -> list[tuple[int, int]]:
     return match_by_distance([t.motion.box for t in tracks], boxes, allowed)

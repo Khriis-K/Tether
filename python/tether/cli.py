@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
                         help=f"detections scored below this are ignored (default {MIN_SCORE})")
     parser.add_argument("--search-gate", type=float, default=SEARCH_GATE,
                         help="center-distance gate, in track box sizes, for re-matching a searching "
-                             "track; with --search-gate-growth 0 too, 0 turns it off "
+                             "track; this and --search-gate-growth both 0 turns it off "
                              f"(default {SEARCH_GATE})")
     parser.add_argument("--search-gate-growth", type=float, default=SEARCH_GATE_GROWTH,
                         help="added to the gate per frame the track has missed "
