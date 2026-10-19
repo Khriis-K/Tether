@@ -36,11 +36,12 @@ class BoxFilter:
         cx, cy, w, h = (float(v) for v in self._x[:4])
         return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
 
-    def predict(self) -> None:
-        """Step one frame forward. Uncertainty grows."""
+    def predict(self, damping: float = 1.0) -> None:
+        """Step one frame forward, first multiplying the velocities by `damping`. Uncertainty grows."""
         q = _covariance(self._x[3], VELOCITY_NOISE)
-        self._x = _F @ self._x
-        self._P = _F @ self._P @ _F.T + q
+        f = _F @ np.diag([1.0] * 4 + [damping] * 4)
+        self._x = f @ self._x
+        self._P = f @ self._P @ f.T + q
 
     def update(self, box: Box) -> None:
         """Blend in a matched detection. Uncertainty shrinks."""

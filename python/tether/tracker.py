@@ -32,6 +32,9 @@ Lifecycle, counted in frames: a new track is "tentative" until it has matched
 a frame is dropped, so one-frame false detections never get a confirmed ID. A
 tracked track that misses is "searching": it keeps predicting, and can still be
 matched, until it has missed more than `max_missing_frames` frames in a row.
+Each missed frame its velocity is multiplied by `coast_damping` before the
+prediction steps forward; 1 (the default) coasts at the last velocity, 0 holds
+the last predicted position.
 """
 
 from collections import deque
@@ -54,6 +57,8 @@ LOW_MIN_IOU = 0.5  # pairs with a low detection that overlap less are never matc
 # Distance gate for searching tracks, in track box sizes; both 0 turns stage 3 off.
 SEARCH_GATE = 0.0  # after one missed frame the gate is SEARCH_GATE + SEARCH_GATE_GROWTH
 SEARCH_GATE_GROWTH = 0.0  # added per missed frame
+# Velocity is multiplied by this each frame a track goes unmatched; 1 is undamped, 0 holds still.
+COAST_DAMPING = 1.0
 
 
 @dataclass
@@ -96,12 +101,14 @@ class Tracker:
     def __init__(self, confirm_frames: int = CONFIRM_FRAMES,
                  max_missing_frames: int = MAX_MISSING_FRAMES,
                  min_score: float = MIN_SCORE, search_gate: float = SEARCH_GATE,
-                 search_gate_growth: float = SEARCH_GATE_GROWTH) -> None:
+                 search_gate_growth: float = SEARCH_GATE_GROWTH,
+                 coast_damping: float = COAST_DAMPING) -> None:
         self._confirm_frames = confirm_frames
         self._max_missing_frames = max_missing_frames
         self._min_score = min_score
         self._search_gate = search_gate
         self._search_gate_growth = search_gate_growth
+        self._coast_damping = coast_damping
         self._tracks: list[_TrackState] = []
         self._next_id = 1
 
@@ -151,7 +158,7 @@ class Tracker:
                 survivors.append(track)
 
         for track in survivors:
-            track.motion.predict()
+            track.motion.predict(self._coast_damping if track.frames_since_seen else 1.0)
         self._tracks = sorted(survivors, key=lambda t: t.id)
         return [t.snapshot() for t in self._tracks]
 

@@ -92,6 +92,15 @@ A searching track's prediction drifts further from its object every frame it coa
 
 ---
 
+### Velocity damping while coasting
+A constant-velocity filter coasts a lost track at its last velocity, which overshoots whenever the object turns. Damping multiplies the velocity by a factor below 1 each missed frame, so the prediction slows to a stop instead of running off. 0 is the constant-position null: the box is frozen where it was last predicted.
+
+**In Tether:** `--coast-damping`, off by default (1.0). On Anti-UAV val, constant position ties the best damping on 1 s prediction error, so past about half a second the velocity estimate is useless there. Paired with the search gate, damping lifts 1 s recovery from 88% to about 94%. On MOT17 it is neutral alone and makes the gate worse.
+
+**Gotcha:** a lower mean prediction error doesn't mean more re-matches. Without a gate, re-matching needs IoU, which is all-or-nothing within about a box size, and undamped predictions hit more often even though their average miss is bigger. Judge damping by recovery, not just by the distance.
+
+---
+
 ## Evaluation
 
 ### MOT17

@@ -3,8 +3,8 @@
 import argparse
 
 from tether.formats import load_detections, save_tracks
-from tether.tracker import (CONFIRM_FRAMES, MAX_MISSING_FRAMES, MIN_SCORE, SEARCH_GATE,
-                            SEARCH_GATE_GROWTH, Tracker)
+from tether.tracker import (COAST_DAMPING, CONFIRM_FRAMES, MAX_MISSING_FRAMES, MIN_SCORE,
+                            SEARCH_GATE, SEARCH_GATE_GROWTH, Tracker)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,13 +27,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--search-gate-growth", type=float, default=SEARCH_GATE_GROWTH,
                         help="added to the gate per frame the track has missed "
                              f"(default {SEARCH_GATE_GROWTH})")
+    parser.add_argument("--coast-damping", type=float, default=COAST_DAMPING,
+                        help="velocity is multiplied by this each frame a track goes unmatched; "
+                             f"1 is undamped, 0 holds the position still (default {COAST_DAMPING})")
     args = parser.parse_args(argv)
 
     tracker = Tracker(confirm_frames=args.confirm_frames,
                       max_missing_frames=args.max_missing_frames,
                       min_score=args.min_score,
                       search_gate=args.search_gate,
-                      search_gate_growth=args.search_gate_growth)
+                      search_gate_growth=args.search_gate_growth,
+                      coast_damping=args.coast_damping)
     save_tracks(args.tracks, [tracker.update(dets) for dets in load_detections(args.detections)])
     return 0
 
