@@ -4,9 +4,9 @@ A running list of the ideas behind Tether, in plain English. Each entry says wha
 
 (This is a learning notebook. The canonical project vocabulary for agents lives in `CONTEXT.md`, if and when it exists.)
 
-**Contents**
-- Ideas: [Tracking basics](#tracking-basics) · [Matching & motion](#matching--motion) · [Evaluation](#evaluation) · [Detection & runtimes](#detection--runtimes) · [Performance](#performance) · [Python vs. C++](#python-vs-c) · [Design & testing ideas](#design--testing-ideas)
-- Case studies: [Problems we hit, and how we met them](#problems-we-hit-and-how-we-met-them)
+The stories behind these ideas (the problems we hit, how we found the causes, and what we learned) are in [LESSONS.md](LESSONS.md).
+
+**Contents:** [Tracking basics](#tracking-basics) · [Matching & motion](#matching--motion) · [Evaluation](#evaluation) · [Detection & runtimes](#detection--runtimes) · [Performance](#performance) · [Python vs. C++](#python-vs-c) · [Design & testing ideas](#design--testing-ideas)
 
 ---
 
@@ -62,6 +62,22 @@ A score from 0 to 1 for how much two boxes overlap: the area they share divided 
 Given a grid of costs (every track against every detection), it finds the one-to-one pairing with the lowest **total** cost. The alternative is greedy matching, where you take the single best pair, then the next best, and so on. That can make one locally good choice that forces a bad one elsewhere. Hungarian looks at the whole grid at once.
 
 Pairs whose cost is too high (for example IoU below a minimum) are rejected after assignment. Without that rule, the algorithm would happily pair things that are nowhere near each other just because every detection "has to" go somewhere.
+
+### Matching cascade (confirmed tracks first)
+Instead of matching every track in one Hungarian pass, match in stages, most trusted tracks first. Each stage only sees the detections the stages before it left over. It's like boarding a plane by group: the passengers with a seat already booked board before standby.
+
+Why bother when Hungarian is "optimal"? It's optimal for the cost you give it, and IoU doesn't know which track deserves a detection more. A tentative track on a duplicate box can overlap a detection just as well as the confirmed track it sits on. In a single pass it can win that detection, and the confirmed person loses their ID. The order you match in is how you tell the matcher which tracks to trust.
+
+**In Tether:** five stages, in this order:
+1. Confirmed tracks, by IoU, against detections scored ≥ 0.25.
+2. Tracks that were tracked last frame, by IoU ≥ 0.5, against detections scored 0.1–0.25 (the ByteTrack low-score pass).
+3. Searching tracks, by the growing search gate.
+4. Tentative tracks, by IoU.
+5. Tracks seen once, by center distance.
+
+Moving confirmed tracks ahead of tentative ones took MOT17 ID switches from 1270 to 779 (the story is in [LESSONS.md](LESSONS.md#tether-made-470-more-id-switches-than-bytetrack-22-23)).
+
+**Gotcha:** an order that protects one kind of track can starve another. The search gate (stage 3) runs before tentative tracks on purpose: when the drone jumps, its detection starts a tentative track, and the gate has to take that detection back for the searching track that owns it.
 
 ### Kalman filter (motion model)
 A small piece of math that keeps a running estimate of an object's state (position, size, velocity) plus *how uncertain* that estimate is. Each frame it does two steps:
@@ -251,97 +267,12 @@ A boundary where you can feed a module input and check its output without the re
 
 **In Tether:** the tracker is the main seam (detection files in, track files out). Frame prep is a smaller one (raw frame in, model input out).
 
+### Ablation
+Finding out what a piece of a system is worth by changing just that piece and measuring the difference. "Ablate" means "remove", so the classic version turns one feature off; swapping one piece for another system's version works the same way. When two systems score differently, ablations tell you *which* difference matters, instead of guessing.
+
+**In Tether:** the #22 ablations swapped one ByteTrack behaviour at a time into Tether (gate, Kalman filter, confirmation frames, assignment, matching order). Only matching order explained the gap. The ablations ran through a throwaway copy of the tracker that, with no flags, gives byte-identical output to the real one. That check proves the copy itself didn't change anything.
+
+**Gotcha:** pieces interact, so one-at-a-time results don't simply add up. All of #22's changes together scored worse than matching order alone (950 ID switches vs. 779). After you find the winner, re-run the others *on top of it*, as the #22 write-up does.
+
 ### Tracer bullet / vertical slice
 Building a thin piece of functionality that works end to end, all the way through every layer, instead of finishing one layer at a time. You get something working early, and integration problems show up early.
-
----
-
-## Problems we hit, and how we met them
-
-The ideas above, in action. Each case is a real problem from this project, in roughly the order we hit it: what went wrong, how we found the cause, what we did, and the lesson that carries over to other projects. The numbers come from the linked write-ups; go there for the full tables.
-
-### A fast object got a new ID every frame (#2)
-**Problem:** an object moving 50 px/frame from its very first frame got 20 IDs in 20 frames.
-
-**Cause:** a brand-new track has no velocity, so it predicts the object will stay put. The next detection doesn't overlap that prediction (IoU = 0), so the track never gets the match that would teach it a velocity. It's a chicken-and-egg problem.
-
-**What we did:** tracks seen exactly once get a second chance, matched by center distance instead of IoU (see *Center-distance fallback*). 20 IDs became 1. Tuning the filter's *Process noise* mattered as much: the pedestrian value (1/160) broke the speed-up test, and high noise on box *size* turned one partial detection into an inside-out predicted box.
-
-**Lesson:** write the hard scene as a test first. A scripted 20-frame scene found this in seconds, with no video or model. See ADR 0001.
-
-### The first MOT17 score was low, and the tracker wasn't to blame (#6)
-**Problem:** HOTA 27.8 on the first MOT17 run.
-
-**How we found it:** the tracker's recall (32.1%) sat right at the detector's own recall (about 34%). A tracker can't keep an ID on a person the detector never found. Splitting recall by person height showed the pattern: people under 100 px were almost never found.
-
-**What we did:** tested the cheapest explanation, resolution, before anything else. 1920×1080 frames shrunk to 640 make people 3× smaller. At 1280 input, 50–100 px people on MOT17-04 went from 0% found to 61%. A 3× bigger model at 640 still found 0%. We then split the *Benchmark detection set* from the *Shipped detector*, and later moved to a 1280×736 rectangle that costs 42% less than the square.
-
-**Lesson:** before tuning a stage, check it isn't capped by the stage in front of it. Comparing a stage's output to its input's ceiling is a quick way to check. See ADR 0002.
-
-### Our own precision numbers were wrong
-**Problem:** detector precision looked worse at higher resolution than it was.
-
-**Cause:** our scoring script counted detections on static people, people on vehicles, and reflections as false alarms. MOT17's official rule ignores those. That understated precision by 2–9 points.
-
-**What we did:** rescored with the official rule, which is to match against *all* ground-truth boxes first, then drop matches to the ignored classes. Some conclusions held and one flipped: on MOT17-02, native resolution went from behind to ahead on precision.
-
-**Lesson:** a quick homemade metric has to follow the official rules, or it measures something else. Check it against the official tool on one case before trusting it. See `docs/handoffs/2026-10-18-mot17-precision-ignore-classes.md`.
-
-### Tether made ~470 more ID switches than ByteTrack (#22, #23)
-**Problem:** on the same detections, Tether made 1270 ID switches to ByteTrack's 800.
-
-**First guess, wrong:** ByteTrack's low-score second pass. A run of ByteTrack with that pass turned off showed it was worth only 0.2 HOTA, well under a fifth of the gap.
-
-**How we found it:** ablations. We swapped one ByteTrack behaviour into Tether at a time: gate, Kalman filter, confirmation frames, reported box, assignment. Only one moved the numbers: **matching order**. Tether matched tentative and confirmed tracks in one pass, so a new tentative track (often from a duplicate box) could steal the detection of the confirmed track under it, then get confirmed under a new ID. That happened 847 times.
-
-**What we did:** confirmed tracks match first, and tentative tracks get the leftovers. ID switches went from 1270 to 779 and HOTA from 35.6 to 40.9. Adding the low-score pass afterward (#26) was a smaller, consistent gain.
-
-**Lesson:** when two systems differ, change one thing at a time and measure each change. The obvious suspect was the wrong one.
-
-### The "ID kept" score could be faked by doing nothing (#8)
-**Problem:** Anti-UAV clips have one drone each. A tracker that never drops its one track would score 100% "same ID kept", even if the box drifted off the drone.
-
-**What we did:** a frame counts only if the track's box overlaps the labeled drone at IoU ≥ 0.5. Frames whose detection we deleted on purpose aren't scored, so 20% deletion doesn't cap the score at 80%. A tracker that outputs nothing on a gap gets no rate instead of a perfect one.
-
-**Lesson:** this is the *Null-case test*. Ask what a useless tracker would score before you trust a metric.
-
-### Tether found the drone but kept losing its ID (#8, #29)
-**Problem:** with nothing deleted, some track held the drone on 93% of frames, but the main ID held it on only 37.6%. One 1,000-frame clip used 81 IDs.
-
-**How we found it:** one-frame predictions were fine and missed only 3.4% of frames. But each miss cost the ID for good. The track went searching and coasted off on its old velocity, so IoU could never re-match it, and the drone's detection started a new track. The misses come from the camera: it's a pan-tilt unit that keeps snapping back to re-center the drone, so the drone moves in a sawtooth in the image (see the *Anti-UAV* gotcha).
-
-**What we did:** a *Growing search gate* lets searching tracks re-match by center distance, with a gate that widens each missed frame. On val, ID kept at 20% deletion went from 30.5% to 61.1%, and 1 s gap recovery from 31.3% to 88.4%.
-
-**Lesson:** fix the stage where the loss happens. Prediction was already near the limit of a constant-velocity model, and recovery was the weak stage.
-
-### The fix for drones broke crowds (#29, #35)
-**Problem:** every gate setting that helped Anti-UAV hurt MOT17. The one we picked added 513 ID switches.
-
-**Why one benchmark couldn't see it:** with one drone per clip, a wide gate can never grab the wrong object, so Anti-UAV always says "wider is better". MOT17's crowds are the only place a false match shows up.
-
-**What we did:** four variants failed, including a later stage order, distance per axis, and a gate scaled by speed. The fix was the *Nearest-track cap*: the gate can't reach past half the distance to the nearest other confirmed track. Checking video by video then turned up a second bug: on MOT17-09, a big box walking past an occluded person landed inside its gate. A height check fixed that. The gate is now on by default. MOT17 ended slightly better than before (731 ID switches, down from 748), and Anti-UAV kept most of its gain (59.9% ID kept, 86.6% of 1 s gaps).
-
-**Lesson:** a change tuned on one benchmark needs a second benchmark that can show its cost. Check per video too, because totals can hide one video getting worse.
-
-### Better predictions didn't mean more re-matches (#30)
-**Problem:** damping the velocity while coasting lowered the average prediction error, but without the gate it *lowered* recovery (0.5 s gaps: 54.4% → 44.1%).
-
-**How we read it:** IoU matching is all-or-nothing within about a box size. A lower average miss doesn't mean more predictions land within a box. We haven't measured that, so it's a guess. The null check also told us something: freezing the box (damping 0) did as well as anything at 1 s, so past about half a second the velocity estimate is useless here.
-
-**What we did:** kept damping in the code but off by default. With the gate and cap on, it adds ID switches on MOT17 at 640.
-
-**Lesson:** judge a change by the outcome you care about, not a stand-in for it. Always run the null version.
-
-### Experiments changed while they ran
-**Problem:** the package is an editable install, so editing `python/tether` during a long benchmark run changed the code the run was using. Parallel runs sharing a results folder could also overwrite each other's files.
-
-**What we did:** froze the baseline in a separate git worktree (`git worktree add ../Tether-baseline HEAD`), and gave every run its own `--work-dir`. We tune on Anti-UAV *val* and keep *test* for one final run, so the test numbers don't leak into the tuning (see *Train/test leakage*).
-
-**Lesson:** when you compare A and B, make sure each one stays exactly as it was until its run finishes.
-
-### Still open: the drone holds two IDs at once (#36, #33)
-**Where it stands:** ID kept at 20% deletion is 59.9% on val, against a 95% target. The main suspect is duplicates. After a missed jump, a new track starts on the drone and gets confirmed while the old one is still searching, and then the two trade the drone back and forth.
-
-**A wrinkle:** even a perfect tracker that gives up after 30 frames can reach only 94.2% on test with nothing deleted, because the drone sometimes leaves the labels for longer. The target sits above what's reachable, and deciding what to do about that is #33.
-
-**Lesson so far:** write down the ceiling next to the target. If the ceiling is below the target, no amount of tuning will reach it.
