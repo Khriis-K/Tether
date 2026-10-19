@@ -12,8 +12,12 @@ track is predicted to be this frame, in this order:
    the gate is `search_gate + search_gate_growth * frames_since_seen` track box
    sizes, wider the longer the track has coasted. This runs before tentative
    tracks, or the tentative track the missed detection started would take it.
-   Off by default: on MOT17 every gate that helped Anti-UAV cost HOTA and ID
-   switches (docs/benchmarks/antiuav-search-gate.md).
+   The gate is capped at `search_gate_cap` times the distance to the nearest
+   other confirmed track, so in a crowd it can't reach a neighbor's detection;
+   without the cap every gate that helped Anti-UAV cost MOT17 HOTA and ID
+   switches (docs/benchmarks/antiuav-search-gate-cap.md). Tentative tracks
+   don't count, since the one a missed detection started is what the gate
+   takes back.
 4. Tentative tracks against the high detections left over, by IoU. Matching them
    after confirmed ones keeps a new track (say, from a duplicate box) from taking
    the detection of the confirmed track it overlaps.
@@ -41,11 +45,13 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+import math
+
 import numpy as np
 
 from tether.formats import Box, Detection, Point, Track
 from tether.kalman import BoxFilter
-from tether.matching import MIN_IOU, match, match_by_distance
+from tether.matching import MIN_IOU, center_distance, match, match_by_distance
 
 PATH_LENGTH = 30  # box centers kept per track for trails
 CONFIRM_FRAMES = 3  # matched frames in a row before a new track is confirmed
@@ -55,8 +61,11 @@ MIN_SCORE = 0.25  # lowest detector confidence the tracker uses (Ultralytics' de
 LOW_SCORE = 0.1  # low detections score above this and below min_score
 LOW_MIN_IOU = 0.5  # pairs with a low detection that overlap less are never matched
 # Distance gate for searching tracks, in track box sizes; both 0 turns stage 3 off.
-SEARCH_GATE = 0.0  # after one missed frame the gate is SEARCH_GATE + SEARCH_GATE_GROWTH
-SEARCH_GATE_GROWTH = 0.0  # added per missed frame
+# Tuned on Anti-UAV val, checked on MOT17 (docs/benchmarks/antiuav-search-gate-cap.md).
+SEARCH_GATE = 1.5  # after one missed frame the gate is SEARCH_GATE + SEARCH_GATE_GROWTH
+SEARCH_GATE_GROWTH = 0.25  # added per missed frame
+# The gate is at most this times the distance to the nearest other confirmed track; inf is no cap.
+SEARCH_GATE_CAP = 0.5  # the issue's untuned starting point: two tracks' gates can't overlap
 # Velocity is multiplied by this each frame a track goes unmatched; 1 is undamped, 0 holds still.
 COAST_DAMPING = 1.0
 
@@ -102,12 +111,14 @@ class Tracker:
                  max_missing_frames: int = MAX_MISSING_FRAMES,
                  min_score: float = MIN_SCORE, search_gate: float = SEARCH_GATE,
                  search_gate_growth: float = SEARCH_GATE_GROWTH,
+                 search_gate_cap: float = SEARCH_GATE_CAP,
                  coast_damping: float = COAST_DAMPING) -> None:
         self._confirm_frames = confirm_frames
         self._max_missing_frames = max_missing_frames
         self._min_score = min_score
         self._search_gate = search_gate
         self._search_gate_growth = search_gate_growth
+        self._search_gate_cap = search_gate_cap
         self._coast_damping = coast_damping
         self._tracks: list[_TrackState] = []
         self._next_id = 1
@@ -166,10 +177,18 @@ class Tracker:
         # frames_since_seen still counts up to the last frame: this one isn't decided yet.
         return self._search_gate + self._search_gate_growth * track.frames_since_seen
 
+    def _capped_gate(self, track: _TrackState) -> float:
+        if self._search_gate_cap == math.inf:
+            return self._gate(track)
+        nearest = min((center_distance(track.motion.box, other.motion.box)
+                       for other in self._tracks if other is not track and other.confirmed),
+                      default=math.inf)
+        return min(self._gate(track), self._search_gate_cap * nearest)
+
     def _by_search_gate(self, tracks: list[_TrackState], boxes: list[Box],
                         allowed: np.ndarray) -> list[tuple[int, int]]:
         return match_by_distance([t.motion.box for t in tracks], boxes, allowed,
-                                 max_distance=[self._gate(t) for t in tracks])
+                                 max_distance=[self._capped_gate(t) for t in tracks])
 
     def _match_unmatched(self, wanted: Callable[[_TrackState], bool], matcher: _Matcher,
                          detections: list[Detection], allowed: np.ndarray,

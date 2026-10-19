@@ -4,6 +4,8 @@ Run 2026-10-19 for #30. Same setup as [antiuav-search-gate.md](antiuav-search-ga
 
 The change: each frame a track goes unmatched, its four velocities (center and size) are multiplied by `coast_damping` before the predict step, and the covariance with them (P ← (FD) P (FD)ᵀ + Q, where D is the damping on the velocity entries). Matched frames are untouched. 1 is the old constant-velocity coast, 0 freezes the box at its last prediction (the constant-position null). `tether-track --coast-damping D`.
 
+**Update (#35): the gate is now on by default with a cap, and damping is still off; with the cap it adds ID switches at 640 ([antiuav-search-gate-cap.md](antiuav-search-gate-cap.md)).**
+
 **Result: it is in the code but off by default (1.0).** Damping only pays on Anti-UAV with the #29 gate on, and the gate is itself off by default because of MOT17. With the default, track files are byte-identical to main's on all 81 files checked (every MOT17 detection file at both input sizes, plus the val 20%-deletion files).
 
 ## Prediction error vs. gap length

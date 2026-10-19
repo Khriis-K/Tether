@@ -86,16 +86,23 @@ When boxes don't overlap, IoU is 0 whether they're near or far, so it can't pick
 ### Growing search gate
 A searching track's prediction drifts further from its object every frame it coasts, so a fixed match threshold eventually can't reach it. A growing gate widens the allowed center distance with each missed frame (`r0 + k·frames_since_seen`, in box sizes).
 
-**In Tether:** `--search-gate` / `--search-gate-growth`, off by default. On Anti-UAV it raises 1 s gap recovery from 31% to 88%, but on MOT17 every setting that helps costs HOTA and ID switches.
+**In Tether:** `--search-gate` / `--search-gate-growth`, 1.5 + 0.25 by default, with the nearest-track cap below. Uncapped, it raises Anti-UAV 1 s gap recovery from 31% to 88%, but on MOT17 every setting that helps costs HOTA and ID switches.
 
 **Gotcha:** the gate is a recall-vs-precision trade, and the cost only shows up where there are other objects to grab. With one target per clip, a wide gate can't pick the wrong box, so Anti-UAV alone will always say "wider is better". A crowded benchmark is the real test.
+
+### Nearest-track cap
+A fixed gate can't be right for both a lone object and a crowd. Capping it at a fraction of the distance to the nearest other track adapts it to the scene: alone, the full gate applies; in a crowd, it shrinks to the space no other track is closer to. At a fraction of one half, two tracks' gates can't overlap.
+
+**In Tether:** `--search-gate-cap`, 0.5 by default, measured to other *confirmed* tracks only. It takes the gate's MOT17 cost from about 500 extra ID switches to none, and costs Anti-UAV about 1 point of ID kept.
+
+**Gotcha:** "alone" means alone among the tracker's tracks, not alone in the world. On Anti-UAV there is one drone, yet the cap binds in about 30% of gate checks, because the tracker's own duplicate IDs of the drone sit nearby.
 
 ---
 
 ### Velocity damping while coasting
 A constant-velocity filter coasts a lost track at its last velocity, which overshoots whenever the object turns. Damping multiplies the velocity by a factor below 1 each missed frame, so the prediction slows to a stop instead of running off. 0 is the constant-position null: the box is frozen where it was last predicted.
 
-**In Tether:** `--coast-damping`, off by default (1.0). On Anti-UAV val, constant position ties the best damping on 1 s prediction error, so past about half a second the velocity estimate is useless there. Paired with the search gate, damping lifts 1 s recovery from 88% to about 94%. On MOT17 it is neutral alone and makes the gate worse.
+**In Tether:** `--coast-damping`, off by default (1.0). On Anti-UAV val, constant position ties the best damping on 1 s prediction error, so past about half a second the velocity estimate is useless there. Paired with the search gate, damping lifts 1 s recovery from 88% to about 94%. On MOT17 it is neutral alone and makes the gate worse; with the nearest-track cap it adds ID switches at 640, mostly on moving-camera videos, so it stays off.
 
 **Gotcha:** a lower mean prediction error doesn't mean more re-matches. Without a gate, re-matching needs IoU, which is all-or-nothing within about a box size, and on Anti-UAV without the gate, undamped predictions recovered more gaps even though their average miss was bigger (our unmeasured guess: they land within a box size more often). Judge damping by recovery, not just by the distance.
 

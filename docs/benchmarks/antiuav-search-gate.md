@@ -4,6 +4,8 @@ Run 2026-10-19 for #29. Same setup as [antiuav-dropout.md](antiuav-dropout.md), 
 
 The change: a matching stage where searching tracks still unmatched after IoU are re-matched to leftover high detections by center distance, within `search_gate + search_gate_growth · frames_since_seen` track box sizes. It runs before tentative tracks, so the tentative track that a missed detection started can't keep it. It reuses `match_by_distance`, which now takes one gate per track.
 
+**Update (#35): the gate is now on by default (1.5 + 0.25), capped by the distance to the nearest other track, which removes the MOT17 cost; see [antiuav-search-gate-cap.md](antiuav-search-gate-cap.md).** The rest of this page is the uncapped gate as of #29.
+
 **Result: it is in the code but off by default.** Every setting that helps Anti-UAV makes MOT17 worse, so nothing changes until a gate is passed (`tether-track --search-gate R0 --search-gate-growth K`). With the defaults, track files are byte-identical to main's on all 81 files checked (every MOT17 detection file at both input sizes, plus the val 20%-deletion files).
 
 ## Val baseline and ByteTrack

@@ -14,7 +14,7 @@ from tether.tracker import Tracker
 SIZE = 20.0
 X, Y = 100.0, 100.0
 CONFIRM = 3
-SEARCH_GATE, SEARCH_GATE_GROWTH = 1.0, 0.5  # test values; the tracker's default is off
+SEARCH_GATE, SEARCH_GATE_GROWTH = 1.0, 0.5  # test values, not the tracker's defaults
 
 
 def box_at(x, y=Y, size=SIZE):
@@ -123,13 +123,15 @@ def returning_outside_iou_range():
 CENTERED = (X + 8.0, Y + 8.0, X + 12.0, Y + 12.0)
 
 
-def test_gate_is_off_by_default():
+def test_gate_is_on_by_default():
+    # On since #35 capped it (docs/benchmarks/antiuav-search-gate-cap.md).
     assert iou(box_at(X), CENTERED) < MIN_IOU
     tracker = Tracker(confirm_frames=CONFIRM)
 
     outputs = [tracker.update(dets) for dets in confirmed_then_missing(1) + [[det(CENTERED)]]]
 
-    assert by_box(outputs[-1], CENTERED).id != only(outputs[-2]).id
+    assert only(outputs[-1]).id == only(outputs[-2]).id
+    assert only(outputs[-1]).status == "tracked"
 
 
 def test_zero_gate_never_matches_even_a_detection_centered_on_the_prediction():
@@ -144,7 +146,8 @@ def test_cli_passes_the_gate_settings_to_the_tracker(tmp_path):
     frames, returned = returning_outside_iou_range()
     save_detections(tmp_path / "dets.jsonl", frames)
 
-    main([str(tmp_path / "dets.jsonl"), str(tmp_path / "off.jsonl"), "--confirm-frames", str(CONFIRM)])
+    main([str(tmp_path / "dets.jsonl"), str(tmp_path / "off.jsonl"), "--confirm-frames", str(CONFIRM),
+          "--search-gate", "0", "--search-gate-growth", "0"])
     main([str(tmp_path / "dets.jsonl"), str(tmp_path / "on.jsonl"), "--confirm-frames", str(CONFIRM),
           "--search-gate", str(SEARCH_GATE), "--search-gate-growth", str(SEARCH_GATE_GROWTH)])
 
