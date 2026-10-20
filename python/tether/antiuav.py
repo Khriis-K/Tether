@@ -77,6 +77,11 @@ def drop_random(boxes: list[Box | None], rate: float, seed: int | Sequence[int])
     return [None if d < rate else b for b, d in zip(boxes, draws)]
 
 
+def drop_clip(clip: Clip, rate: float, seed: int) -> list[Box | None]:
+    """`drop_random` seeded per clip by name, so a clip's deletions don't depend on which other clips run."""
+    return drop_random(clip.boxes, rate, seed=[seed, zlib.crc32(clip.name.encode())])
+
+
 def seconds_to_frames(seconds: float, fps: float) -> int:
     return max(1, round(seconds * fps))
 
@@ -109,6 +114,23 @@ def id_kept(gt: list[Box | None], given: list[Box | None], frames: list[list[Tra
     counts = Counter(i for f in scored for i in holders(gt[f], frames[f]))
     kept = counts.most_common(1)[0][1] if counts else 0
     return {"kept": kept, "frames": len(scored)}
+
+
+def id_kept_ceiling(given: list[Box | None], max_missing: int | None) -> dict:
+    """The best `id_kept` any tracker could score on these boxes if it forgets a track after
+    `max_missing` frames in a row without one (None: never forgets). The kept frames are
+    the given ones in the longest stretch without a longer absence."""
+    runs, run, absent = [], 0, 0
+    for box in given:
+        if box is None:
+            absent += 1
+            continue
+        if max_missing is not None and absent > max_missing:
+            runs.append(run)
+            run = 0
+        run, absent = run + 1, 0
+    runs.append(run)
+    return {"kept": max(runs), "frames": sum(runs)}
 
 
 def gap_recovery(gt: list[Box | None], gaps: list[tuple[int, int]], frames: list[list[Track]]) -> dict:
@@ -171,8 +193,7 @@ def evaluate(dataset_dir: str | Path, work_dir: str | Path, tracker_cmd: str, na
         print(f"random deletion {rate:g}", flush=True)
         kept = frames = 0
         for clip in clips:
-            # Seeded per clip by name, so a clip's deletions don't depend on which other clips run.
-            given = drop_random(clip.boxes, rate, seed=[seed, zlib.crc32(clip.name.encode())])
+            given = drop_clip(clip, rate, seed)
             score = id_kept(clip.boxes, given, run(f"drop-{rate}-seed{seed}", clip, given))
             kept, frames = kept + score["kept"], frames + score["frames"]
         deletion.append({"drop_rate": rate, "kept": kept, "frames": frames, "id_kept": _percent(kept, frames)})

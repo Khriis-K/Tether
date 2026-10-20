@@ -189,6 +189,13 @@ Before trusting a metric, ask: *what score would a useless system get?* If a tra
 
 **In Tether:** a tracker that never drops its one track would score 100% "same ID kept" on single-drone clips. The fix was to require IoU ≥ 0.5 with the real drone box for the ID to count.
 
+### Reachable ceiling
+The best score any system could get under a rule it can't break, worked out from the labels alone. If the ceiling is below the target, no tuning will reach the target.
+
+**In Tether:** a track that searches longer than its window without a detection is forgotten, so an Anti-UAV clip where the drone leaves the labels for longer than that forces a new ID. Splitting each clip at those absences and keeping only its longest piece gives the best possible "ID kept" (`id_kept_ceiling`, `tools/antiuav_ceiling.py`). With the 30-frame default it's 94.0% on test at 20% deletion, under the 95% target (`docs/benchmarks/antiuav-ceiling.md`).
+
+**Gotcha:** it's an upper bound, not a forecast. It ignores everything else that loses IDs (confirmation, the IoU rule, bad matches). And with no search limit it's 100% by construction, because nothing else can go wrong on a single-drone clip; the cost of a longer window only shows up in crowds, where a dead track can be revived on the wrong person.
+
 ### Train/test leakage
 Scoring a model on data it was trained on. The numbers look great and mean nothing, like grading a student on the exact homework they studied. Published MOT17 trackers often use detectors trained on MOT17's train videos. Tether evaluates *on* those videos, so it can't use such a detector without a held-out split.
 

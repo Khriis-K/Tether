@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 import pytest
 
-from tether.antiuav import (DRONE, Clip, blank, drop_random, evaluate, gap_recovery, id_kept, load_clip, main,
-                            place_gaps, seconds_to_frames, to_detections)
+from tether.antiuav import (DRONE, Clip, blank, drop_random, evaluate, gap_recovery, id_kept, id_kept_ceiling,
+                            load_clip, main, place_gaps, seconds_to_frames, to_detections)
 from tether.formats import Track, load_detections
 
 
@@ -177,6 +177,43 @@ def test_after_an_id_switch_only_the_most_common_id_counts():
 
 def test_a_tracker_with_no_tracks_keeps_nothing():
     assert id_kept(GT, GT, [[] for _ in GT]) == {"kept": 0, "frames": 10}
+
+
+# --- Reachable ID kept ---
+
+def given_with_absences(*runs):
+    """Alternating stretches: boxes, then absent frames, then boxes, ..."""
+    return [drone_box(0) if i % 2 == 0 else None for i, n in enumerate(runs) for _ in range(n)]
+
+
+def test_with_no_absence_every_given_frame_is_reachable():
+    assert id_kept_ceiling(GT, max_missing=30) == {"kept": 10, "frames": 10}
+
+
+def test_an_absence_as_long_as_the_search_keeps_the_id():
+    assert id_kept_ceiling(given_with_absences(4, 3, 6), max_missing=3) == {"kept": 10, "frames": 10}
+
+
+def test_an_absence_longer_than_the_search_forces_a_new_id_and_the_longest_stretch_counts():
+    assert id_kept_ceiling(given_with_absences(4, 4, 6), max_missing=3) == {"kept": 6, "frames": 10}
+
+
+def test_absences_at_the_start_or_end_of_the_clip_break_nothing():
+    assert id_kept_ceiling(given_with_absences(0, 9, 5, 9), max_missing=3) == {"kept": 5, "frames": 5}
+
+
+def test_deleted_boxes_count_as_absent_and_are_not_scored():
+    given = drop_random(GT, 1.0, seed=0)[:2] + GT[2:]  # first two deleted
+
+    assert id_kept_ceiling(given, max_missing=1) == {"kept": 8, "frames": 8}
+
+
+def test_with_no_search_limit_no_absence_breaks_the_id():
+    assert id_kept_ceiling(given_with_absences(4, 500, 6), max_missing=None) == {"kept": 10, "frames": 10}
+
+
+def test_a_clip_with_no_drone_has_nothing_to_score():
+    assert id_kept_ceiling([None] * 5, max_missing=3) == {"kept": 0, "frames": 0}
 
 
 # --- Recovery across gaps ---

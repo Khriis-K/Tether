@@ -23,7 +23,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from tether.antiuav import DEFAULT_WORK_DIR, Clip, holders, load_clip, to_detections
+from tether.antiuav import DEFAULT_WORK_DIR, Clip, holders, id_kept_ceiling, load_clip, to_detections
 from tether.formats import Box, load_detections, load_tracks
 from tether.matching import MIN_IOU as MATCH_IOU
 from tether.matching import iou
@@ -49,21 +49,9 @@ def finding_vs_keeping(clips: list[Clip], dets_dir: Path, tracks_dir: Path) -> d
 
 def reachable(clips: list[Clip], max_missing: int) -> dict:
     """The best "ID kept" any tracker that forgets a track after `max_missing` unlabeled
-    frames could score with nothing deleted: per clip, the labeled frames in its longest
-    stretch without a longer absence, over all labeled frames."""
-    best = labeled = 0
-    for clip in clips:
-        runs, run, absent = [], 0, 0
-        for box in clip.boxes:
-            if box is None:
-                absent += 1
-                continue
-            if absent > max_missing:
-                runs.append(run)
-                run = 0
-            run, absent = run + 1, 0
-        runs.append(run)
-        best, labeled = best + max(runs), labeled + sum(runs)
+    frames could score with nothing deleted (see `id_kept_ceiling`)."""
+    scores = [id_kept_ceiling(clip.boxes, max_missing) for clip in clips]
+    best, labeled = sum(s["kept"] for s in scores), sum(s["frames"] for s in scores)
     return {"max_missing_frames": max_missing, "labeled_frames": labeled, "id_kept_ceiling": 100 * best / labeled}
 
 
