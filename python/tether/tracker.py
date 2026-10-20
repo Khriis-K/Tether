@@ -193,9 +193,9 @@ class Tracker:
             track.observe(detections[di].box, self._confirm_frames)
             survivors.append(track)
 
-        matched_tracks = {ti for ti, _ in pairs} | merged_away
+        handled = {ti for ti, _ in pairs} | merged_away  # every track that didn't miss this frame
         for ti, track in enumerate(self._tracks):
-            if ti not in matched_tracks:
+            if ti not in handled:
                 track.frames_since_seen += 1
                 if not track.confirmed:
                     track.misses += 1
