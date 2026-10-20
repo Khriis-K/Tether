@@ -41,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--merge-reach-growth", type=float, default=MERGE_REACH_GROWTH,
                         help="added to the merge reach per frame the older track has missed "
                              f"(default {MERGE_REACH_GROWTH})")
+    parser.add_argument("--single-target", action="store_true",
+                        help="diagnostic upper bound for one-object footage, never a default: when the "
+                             "only confirmed track is searching, it takes the nearest detection anywhere")
     args = parser.parse_args(argv)
 
     tracker = Tracker(confirm_frames=args.confirm_frames,
@@ -51,7 +54,8 @@ def main(argv: list[str] | None = None) -> int:
                       search_gate_cap=args.search_gate_cap,
                       coast_damping=args.coast_damping,
                       merge_reach=args.merge_reach,
-                      merge_reach_growth=args.merge_reach_growth)
+                      merge_reach_growth=args.merge_reach_growth,
+                      single_target=args.single_target)
     save_tracks(args.tracks, [tracker.update(dets) for dets in load_detections(args.detections)])
     return 0
 

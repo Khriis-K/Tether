@@ -45,6 +45,27 @@ The numbers in this section come from `tools/antiuav_diagnose.py` (see Reproduce
 
 So the first thing to fix is re-matching a track that has just missed, not prediction itself: the detection is still close, but IoU against a coasted box can't see it. `docs/research/camera-motion.md` collects options (re-association by a distance gate that grows while searching, velocity damping while coasting, tentative tracks that survive a miss, offline camera-motion compensation). Not measured yet: how ByteTrack does on the same files, and how much each change would help. Any tuning goes on the train or val split; test stays for final numbers.
 
+## Final run for #28
+
+Run 2026-10-20, once, after #29–#37 and with the target settled by #33. Same test split, seed and conditions as above. The tracker is `main`'s defaults at #34 (the [duplicate merge](antiuav-duplicates.md), the capped [search gate](antiuav-search-gate-cap.md); the single-target oracle is off). This is the only time test was run during #28, and nothing was tuned on it.
+
+| Test | #8 (above) | Final | SPEC target | Met? |
+|---|---|---|---|---|
+| Nothing deleted | 37.6% | **82.6%** of 79,724 frames | — | |
+| 20% deleted, ID kept | 26.1% | **84.0%** of 63,723 frames (53,523) | ≥ 95% of the ceiling: 0.95 × 94.0% = **89.3%** | **No**: 89.37% of the ceiling, under 95% |
+| Gaps of 0.25 s | 68.5% | 91.5% of 1,651 held (1,741 gaps) | — | |
+| Gaps of 0.5 s | 48.3% | 87.9% of 1,434 held (1,511 gaps) | — | |
+| Gaps of 1 s | 27.2% | **88.9%** of 1,214 held (1,268 gaps) | ≥ 80% | **Yes** |
+
+Ceiling at the 30-frame window, same deleted boxes: 94.2% with nothing deleted, 94.0% (59,885 frames) at 20% (`tools/antiuav_ceiling.py`, matching [antiuav-ceiling.md](antiuav-ceiling.md)).
+
+- **ID kept misses by 5.3 points on test**, against 6.4 on val (85.3% vs. 91.7%). Test agrees with val to within 1.3 points, so the val tuning didn't overfit in a way that shows here.
+- **Gap recovery passes on test** as it did on val (88.8%).
+- Test with nothing deleted (82.6%) scores below 20% deletion (84.0%). On val it's the other way round (88.4% vs. 85.3%). The two conditions score different frames (deleted ones aren't scored), so they aren't directly comparable. Why test differs here wasn't looked into.
+- Prediction error in gaps: 34.3, 74.7 and 145.2 px for 0.25, 0.5 and 1 s.
+
+Reproduce: `tether-antiuav data/Anti-UAV300 --split test --work-dir results/final28-test --name default`.
+
 ## Reproduce
 
 ```
