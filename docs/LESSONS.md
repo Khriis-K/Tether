@@ -19,12 +19,12 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 
 ### What's built, what's next
 **Built (Python):**
-- The tracker: Kalman motion model, a five-stage matching cascade, a track lifecycle, ByteTrack's low-score pass, and a capped search gate.
+- The tracker: Kalman motion model, a five-stage matching cascade, a track lifecycle, ByteTrack's low-score pass, a capped search gate, and a duplicate-track merge.
 - The YOLO26n ONNX detector, which reads its input size from the model.
 - A webcam/video demo and per-step timing logs.
 - A MOT17 evaluation through TrackEval, and a ByteTrack baseline on the same detections.
 - An Anti-UAV dropout simulator with its own scoring.
-- 202 automated tests.
+- 214 automated tests.
 
 **Not built yet:** the C++ port, TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. There are **no speed results yet**. Talk about these as the plan, not as achievements.
 
@@ -32,11 +32,11 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 
 | Claim | Number | Say this with it |
 |---|---|---|
-| Matches ByteTrack on MOT17 at the benchmark input size (1280×736) | Tether 41.5 HOTA / 49.4 IDF1 / 731 ID switches; ByteTrack 40.9 / 48.6 / 800 | Measured on the same 7 videos we used to choose the settings, with no held-out split. The 0.6 HOTA margin is small. |
+| Matches ByteTrack on MOT17 at the benchmark input size (1280×736) | Tether 41.46 HOTA / 49.38 IDF1 / 732 ID switches; ByteTrack 40.86 / 48.63 / 800 | Measured on the same 7 videos we used to choose the settings, with no held-out split. The 0.60 HOTA margin is small. |
 | Close to ByteTrack at the shipped input size (640) | Tether 33.1 / 37.6 / 529; ByteTrack 33.5 / 37.9 / 549 | Slightly behind on HOTA and IDF1, ahead on ID switches. |
 | Fixing the matching order closed most of the gap | 1270 → 779 ID switches, 35.6 → 40.9 HOTA (1280×736) | Found by ablation, not by guessing. See [the story](#tether-made-470-more-id-switches-than-bytetrack-22-23). |
 | Higher input resolution, not a bigger model, fixed detection | Detector recall 33.7% → 54.6% across the 7 videos, at similar precision (85.4% → 84.3%) | A 3× bigger model at 640 still missed small people. |
-| Recovers the drone after gaps far more often | Anti-UAV val, 20% of boxes deleted: ID kept 30.5% → 59.9%; 1 s gaps recovered 31.3% → 86.6% | Val split, which we tuned on; test is saved for one final run. Detections are the labeled boxes, so this tests the tracker, not the detector. The 95% ID-kept target is not met. |
+| Recovers the drone after gaps far more often | Anti-UAV val, 20% of boxes deleted: ID kept 30.5% → 85.3%; 1 s gaps recovered 31.3% → 88.8% | Val split, which we tuned on; test is saved for one final run. Detections are the labeled boxes, so this tests the tracker, not the detector. The 95% ID-kept target is not met (9.7 points short). |
 
 ### Debugging playbook
 The habits these stories taught, in the order you'd reach for them:
@@ -46,7 +46,7 @@ The habits these stories taught, in the order you'd reach for them:
 4. **Compare each stage to its best possible version.** The stage that looks weak may already be at its limit, and the real loss may be somewhere else. *([Losing the drone](#tether-found-the-drone-but-kept-losing-its-id-8-29))*
 5. **Test on a benchmark that can show the cost.** A change tuned on one dataset needs a second one where it can fail, checked per video, not just in total. *([Drones vs. crowds](#the-fix-for-drones-broke-crowds-29-35))*
 6. **Judge by the outcome, not a stand-in.** A better intermediate number doesn't always mean a better result. *([Damping](#better-predictions-didnt-mean-more-re-matches-30))*
-7. **Write the ceiling next to the target.** If the best possible score is below the target, tuning can't get there. *([Still open](#still-open-the-drone-holds-two-ids-at-once-36-33))*
+7. **Write the ceiling next to the target.** If the best possible score is below the target, tuning can't get there. *([Two IDs at once](#the-drone-held-two-ids-at-once-36-33))*
 8. **Count the failure on real data before fixing it.** A scripted scene shows a failure can happen, not how often. *([Stopping one swap](#stopping-one-swap-cost-more-than-it-saved-37))*
 
 ---
@@ -152,14 +152,16 @@ Roughly in the order we hit them. Each one opens with a two-sentence version to 
 
 **Lesson:** when you compare A and B, make sure each one stays exactly as it was until its run finishes.
 
-### Still open: the drone holds two IDs at once (#36, #33)
-**In two sentences:** the drone often ends up with two confirmed IDs at once, which trade it back and forth, and that's the main suspect for the gap to the 95% target. Even a perfect tracker that gives up after 30 frames would top out at 94.2%, so the target itself needs a decision.
+### The drone held two IDs at once (#36, #33)
+**In two sentences:** after a missed jump, the drone's detection started a new track that got confirmed while the old one was still searching, so the drone held two IDs that traded it back and forth. Merging the new track into the old one when it's confirmed took ID kept at 20% deletion from 59.9% to 85.3%, with every MOT17 video within 0.01 HOTA.
 
-**Where it stands:** ID kept at 20% deletion is 59.9% on val, against a 95% target. The main suspect is duplicates. After a missed jump, a new track starts on the drone and gets confirmed while the old one is still searching, and then the two trade the drone back and forth.
+**Problem:** ID kept at 20% deletion was 59.9% on val, against a 95% target. We measured first: of 785 changes of which ID held the drone, 724 went to a track born while the old holder was still searching. Duplicates were nearly all of what was left.
 
-**A wrinkle:** even a perfect tracker that gives up after 30 frames can reach only 94.2% on test with nothing deleted, because the drone sometimes leaves the labels for longer. The target sits above what's reachable, and deciding what to do about that is #33.
+**What we did:** the issue's first ideas needed the duplicate to be born near the old track's prediction, but it usually wasn't. The median was 5.6 box sizes away. So the [duplicate-track merge](CONCEPTS.md#duplicate-track-merge) got its own reach, much wider than the gate: 10 + 1 box sizes per missed frame. It's capped like the gate, so it can't reach a neighbor in a crowd. Changes of which ID held the drone fell from 913 / 785 to 29 / 37, and every MOT17 video stayed within 0.01 HOTA. See `docs/benchmarks/antiuav-duplicates.md`. The cost is in sparse scenes, where the wide reach can hand an ID to a newcomer. #37 tried to fix that and shelved it ([below](#stopping-one-swap-cost-more-than-it-saved-37)).
 
-**Lesson so far:** write down the ceiling next to the target. If the ceiling is below the target, no amount of tuning will reach it.
+**Still open:** even a perfect tracker that gives up after 30 frames can reach only 94.2% on test with nothing deleted, because the drone sometimes leaves the labels for longer. The target sits above what's reachable, and deciding what to do about that is #33.
+
+**Lesson:** write down the ceiling next to the target. If the ceiling is below the target, no amount of tuning will reach it. And measure what's actually losing the score before choosing the fix.
 
 ### Stopping one swap cost more than it saved (#37)
 **In two sentences:** in a nearly empty scene, a person who walked out of frame could hand their ID to a newcomer, so we tried an "edge rule": a track last seen at the frame edge never gives its ID away. It fixed the scripted scene, but on real data the swap was rare and the rule cost about 1 point of Anti-UAV ID kept, so we shelved it.
@@ -209,7 +211,7 @@ Know these before someone asks.
 - **MOT17 results are on tuning data.** Every MOT17 number comes from the 7 train videos, and the same videos were used to choose the settings. There's no held-out split, so "beats ByteTrack" is a weak claim; "matches ByteTrack" is the honest one. We can't use a detector trained on MOT17 either, because that would leak (see [train/test leakage](CONCEPTS.md#traintest-leakage)).
 - **The ByteTrack baseline isn't tuned to these detections either.** It's Ultralytics' BYTETracker with Ultralytics' defaults for YOLO detectors, not the paper's MOT17 settings, which assumed a detector trained on MOT17. Both trackers read the same detections, so the comparison is fair, but neither is at its best possible score.
 - **At 640, Tether is slightly behind ByteTrack** on HOTA (0.4) and IDF1 (0.3). The cause hasn't been found.
-- **Anti-UAV is well short of its target.** ID kept at 20% deletion is 59.9% on val against a 95% target, and the reachable ceiling with a 30-frame search is 94.2% on test (#33, #36).
+- **Anti-UAV is short of its target.** ID kept at 20% deletion is 85.3% on val against a 95% target, and the reachable ceiling with a 30-frame search is 94.2% on test (#33, #36).
 - **Sparse scenes can swap IDs.** With nobody else in view, a person who walks out can hand their ID to a same-size newcomer within about a second. The gate and merge reach far around a big box, and the cap only binds in a crowd. The size check catches some cases, and on MOT17 most risky pairs are mid-frame, not at the edge. Fixing it properly needs appearance re-ID (#37, `docs/benchmarks/edge-rule.md`).
 - **Anti-UAV tests the tracker, not the whole system.** Detections are the labeled boxes with deletions added, not a real detector's output.
 - **No speed claims yet.** Everything so far runs in Python on CPU ONNX Runtime. The C++, TensorRT and CUDA work, and its before-and-after numbers, hasn't been built yet.
