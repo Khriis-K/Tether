@@ -6,7 +6,7 @@ A running list of the ideas behind Tether, in plain English. Each entry says wha
 
 The stories behind these ideas (the problems we hit, how we found the causes, and what we learned) are in [LESSONS.md](LESSONS.md).
 
-**Contents:** [Tracking basics](#tracking-basics) · [Matching & motion](#matching--motion) · [Evaluation](#evaluation) · [Detection & runtimes](#detection--runtimes) · [Performance](#performance) · [Python vs. C++](#python-vs-c) · [Design & testing ideas](#design--testing-ideas)
+**Contents:** [Tracking basics](#tracking-basics) · [Matching & motion](#matching--motion) · [Evaluation](#evaluation) · [Detection & runtimes](#detection--runtimes) · [Performance](#performance) · [Python vs. C++](#python-vs-c) · [Display](#display) · [Design & testing ideas](#design--testing-ideas)
 
 ---
 
@@ -335,6 +335,25 @@ Printing a decimal number with the fewest digits that still read back to exactly
 **Gotcha:** "shortest" doesn't settle the notation. C++'s shortest output prints 10^16 as `1e+16` in one mode and `10000000000000000` in another, and Python picks by its own rule (scientific below 1e-4 and from 1e16 up), so the port has to apply Python's rule itself.
 
 ---
+
+## Display
+
+### Golden-ratio colours
+A way to give each new item its own colour without knowing how many items there will be. Step the hue (the position around the colour wheel) by the golden ratio, about 0.618 of a turn, for each new ID. Because the golden ratio is the "most irrational" number, the hues never line up into bunches: any first N of them stay spread around the wheel, and back-to-back IDs land far apart. An even split (1/N apart) is better, but only if you know N up front, which a tracker never does.
+
+**In Tether:** `track_hue` in `cpp/src/tether/hud.cpp`. A test checks that for every N up to 60, the closest two of the first N hues are at least 0.3/N apart. Tether's hues come out at least 0.41/N apart for every N up to 60, after the squeeze around the accent. The hues also skip a narrow band around the accent orange, so no track looks like "searching".
+
+**Gotcha:** colour alone still isn't enough. Some IDs land close together by chance, and some viewers can't tell red from orange. That's why status is shown by line style (see the next entry).
+
+### Redundant encoding (not by colour alone)
+Showing one piece of information two ways at once, so it still reads if one channel fails, for example for colour-blind viewers or on a washed-out projector. It's a standard accessibility rule: never use colour as the only signal.
+
+**In Tether:** a track's status is shown both by colour and by line style. Tracked objects get solid corner brackets. The prediction of where they'll be next is a thin dashed box. A searching object is a thick, longer-dashed box in the accent colour, with a "missing N" label. A test compares the searching box's ink with a prediction's, so "thicker" can't quietly drift away.
+
+### Image-sequence frame rate
+A folder of numbered images (how MOT17 ships its videos) has no frame rate of its own: it's just pictures. When OpenCV opens one through FFmpeg, it reports FFmpeg's default of 25 FPS, which is made up.
+
+**In Tether:** `--record` saves at the source's frame rate. Trusting the 25 made MOT17-09, really 30 FPS, play back 20% slow. So an image sequence now reports "can't tell" (0), and the recording falls back to 30. The true rate is in each MOT17 video's `seqinfo.ini`; a few are 14 or 25 FPS and would still record at the wrong speed.
 
 ## Design & testing ideas
 

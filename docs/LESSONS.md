@@ -30,11 +30,12 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 **Built (C++):**
 - The same tracker and a `tether-track` CLI with the same options and file formats, built with CMake.
 - A committed match check, `tether-parity`, that runs both trackers on the same files and names the first differing frame and track. IDs and statuses match on every frame of all 462 real detection files we have: 7 MOT17 videos, plus 91 Anti-UAV test clips under 5 dropout conditions (`docs/benchmarks/cpp-tracking-speed.md`). `ctest` runs it on scripted scenes against every build.
-- The sequential pipeline, `tether-pipeline` (#11): a webcam or video file through one video-source interface, CPU frame prep behind a frame-prep interface, YOLO26 on ONNX Runtime behind a detector interface (model size n/s/m is a setting), then the tracker. It's headless for now. It writes the shared timing log and detection files, and on a webcam it counts the frames the camera dropped. Its detection files are byte-identical to the Python pipeline's.
+- The sequential pipeline, `tether-pipeline` (#11): a webcam or video file through one video-source interface, CPU frame prep behind a frame-prep interface, YOLO26 on ONNX Runtime behind a detector interface (model size n/s/m is a setting), then the tracker. It writes the shared timing log and detection files, and on a webcam it counts the frames the camera dropped. Its detection files are byte-identical to the Python pipeline's.
+- The HUD (#12): `tether-pipeline --show` draws the tracks in a window, and `--record VIDEO` saves the drawn run to a video file. Tracked objects get corner brackets and an ID label, each track its own colour ([golden-ratio colours](CONCEPTS.md#golden-ratio-colours)), with a fading trail and a thin dashed box where it should be next. A searching object gets a thick, dashed box in the accent orange, plus how many frames it's been missing. Status reads from line style alone ([redundant encoding](CONCEPTS.md#redundant-encoding-not-by-colour-alone)). Space pauses, q or Esc quits. A recorded frame is in `docs/media/hud-mot17-09.jpg`.
 - `tether-pipeline-compare`, which times both whole pipelines on the same video (`docs/benchmarks/cpp-pipeline-speed.md`).
-- 172 tests: every Python tracker behavior test, ported, plus tests that pin the assignment solver to SciPy's answers, the timing tool's tests, and the pipeline's (frame prep, decoding, the loop, file formats, the CLI on a stand-in model). `ctest` also runs both Python-vs-C++ checks against every build. The tracker tests pass with MSVC on Windows and GCC on Linux; the pipeline has only been built on Windows.
+- 204 tests: every Python tracker behavior test, ported, plus tests that pin the assignment solver to SciPy's answers, the timing tool's tests, and the pipeline's (frame prep, decoding, the loop, file formats, the CLI on a stand-in model), and the HUD's (its drawing checked pixel by pixel, the pause and quit keys against a scripted screen, and `--record` end to end). `ctest` also runs both Python-vs-C++ checks against every build. The tracker tests pass with MSVC on Windows and GCC on Linux; the pipeline has only been built on Windows.
 
-**Not built yet:** TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. Talk about these as the plan, not as achievements.
+**Not built yet:** TensorRT, CUDA frame prep, the parallel pipeline, the stats panel, and the Docker image. Talk about these as the plan, not as achievements.
 
 ### Headline results
 
@@ -257,6 +258,17 @@ See the [edge rule](CONCEPTS.md#edge-rule-tried-shelved) and `docs/benchmarks/ed
 
 **Lesson:** before porting for speed, compute the ceiling. One division (Python's frame time over its detect time, the part C++ can't speed up) shows 2× is out of reach with this detector, and it could have been done from the Python timing logs before writing any C++. And a speed comparison means little until both sides are shown to do the same work. Here that was a byte-for-byte diff of their outputs.
 
+### The demo video played 20% slow (#12)
+**In two sentences:** the first HUD recording of MOT17-09 was saved at 25 FPS, but the video is 30 FPS, so it played back slow. MOT17 ships as folders of JPEGs, and OpenCV (through FFmpeg) reports a made-up 25 FPS for any [image sequence](CONCEPTS.md#image-sequence-frame-rate).
+
+**Problem:** `--record` saves at the source's frame rate, so the demo video plays at real speed. The end-to-end test passed with a PNG sequence, which reported no rate and fell back to 30.
+
+**How we found it:** by opening the recording and reading its frame rate back. It said 25.0. `seqinfo.ini` says 30, and OpenCV reported 25 for the JPEG folder directly.
+
+**What we did:** an image-sequence source now says it can't tell its rate, so the recording falls back to 30. A new test opens a JPEG sequence, the case the PNG test missed.
+
+**Lesson:** a passing end-to-end test only covers the input it used. Our test data (PNGs) took a different path through FFmpeg than the real data (JPEGs). Reading the output back from a real run caught what the test couldn't.
+
 ---
 
 ## What didn't work
@@ -297,4 +309,5 @@ Know these before someone asks.
 - **Anti-UAV tests the tracker, not the whole system.** Detections are the labeled boxes with deletions added, not a real detector's output.
 - **The big speedup is the tracking step alone.** It's 14.1× (MOT17) and 35.0× (Anti-UAV) faster in C++, on one laptop CPU. The whole pipeline is only 1.08–1.20× faster, because both languages run the same CPU ONNX Runtime detector and it dominates. Against the spec's 2× whole-pipeline target, even a C++ pipeline whose other steps were free would get 1.27–1.76×. TensorRT and CUDA prep haven't been built. Why drones gain more than crowds in tracking hasn't been profiled.
 - **The live webcam doesn't keep up yet.** The sequential C++ pipeline ran at 24.4 FPS against the laptop's 30 FPS camera and dropped 69 frames in 300 read. Its detect step alone is longer than a camera period. One run, one camera.
+- **The HUD's live keys haven't been pressed by hand yet.** Pause, resume and quit are tested against a scripted screen. The real window ran and drew, but this session's desktop was locked, so no real key press reached it. The labels use OpenCV's built-in Hershey font, not the spec's IBM Plex Mono. And while paused the pipeline waits inside its draw step, so a run that was paused has one very long `draw` time in its timing log.
 - **Python–C++ parity is checked on the files we have.** All 462 real files match, with boxes within 2.6e-9 px, but a tie the two solvers break differently could still turn up on inputs we haven't run. `tether-parity` will show it at the first frame where it happens.

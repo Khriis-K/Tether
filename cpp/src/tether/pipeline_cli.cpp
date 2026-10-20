@@ -62,8 +62,7 @@ cv::VideoWriter open_recording(const std::filesystem::path& path, double fps, cv
   auto ext = path.extension().string();
   int fourcc = ext == ".avi" || ext == ".AVI" ? cv::VideoWriter::fourcc('M', 'J', 'P', 'G')
                                               : cv::VideoWriter::fourcc('m', 'p', '4', 'v');
-  cv::VideoWriter writer;
-  if (!std::filesystem::is_directory(path)) writer.open(path.string(), fourcc, fps, size);
+  cv::VideoWriter writer(path.string(), fourcc, fps, size);
   if (!writer.isOpened()) throw std::runtime_error("can't record to '" + path.string() + "'");
   return writer;
 }
