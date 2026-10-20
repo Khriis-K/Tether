@@ -194,7 +194,9 @@ All speed targets are for the final C++ version with TensorRT and YOLO26n at 640
 
 **Anti-UAV dropout tests** (labeled boxes with failures added on purpose)
 - An ID only counts as kept if the track's box overlaps the labeled drone box with IoU ≥ 0.5. Otherwise a track that never dies would score 100% on single-drone clips.
-- With 20% of detections randomly deleted: same ID kept at least 95% of the time.
+- With 20% of detections randomly deleted: same ID kept on at least 95% of the frames a perfect tracker could keep. That is, ID kept ≥ 0.95 × the reachable ceiling, computed on the same deleted boxes with the tracker's own search window (`tools/antiuav_ceiling.py`). Report the ceiling next to the score every time.
+  - Why relative: a track forgotten after its search window must take a new ID when the drone leaves the labels for longer, so a flat 95% sat above what any 30-frame tracker can reach on test (94.0%). Lengthening the window instead was rejected: on test only 3 s clears 95%, and a longer search gives dead tracks more time to be revived on the wrong object in crowds. See `docs/benchmarks/antiuav-ceiling.md` (#33).
+  - The ceiling ignores the frames a new track needs to be confirmed, so even a perfect tracker scores slightly under 100% of it.
 - With gaps up to 1 second (converted to frames using the clip's frame rate): same ID recovered at least 80% of the time.
 - Prediction error during gaps: reported as a result, not pass/fail.
 

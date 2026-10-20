@@ -37,3 +37,7 @@ python tools/antiuav_ceiling.py data/Anti-UAV300 --split test
 ```
 
 Results go to `<work-dir>/ceiling/<split>.json`. Each run takes a few seconds. Test at 0% deletion and 30 frames reproduces the 94.2% in `antiuav-dropout.md`.
+
+## Decision
+
+Kept the 30-frame window and made the SPEC target relative: ID kept at 20% deletion ≥ 95% of the ceiling at the tracker's own window. That's 91.7% on val and 89.3% on test. Tether's 85.3% on val is 88.4% of its ceiling, so the target is still not met. A ratio rather than "within N points" keeps the original 5% allowance and scales with the ceiling. Raising the window to the tracker's advantage raises the ceiling, and so the target, with it.
