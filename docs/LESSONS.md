@@ -27,7 +27,11 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 - A single-target prior that knows there's one drone (`--single-target`), kept only as a diagnostic upper bound, never a default.
 - 230 automated tests.
 
-**Not built yet:** the C++ port, TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. There are **no speed results yet**. Talk about these as the plan, not as achievements.
+**Built (C++):**
+- The same tracker and a `tether-track` CLI with the same options and file formats, built with CMake. Its IDs and statuses match the Python tracker's on every frame of the 7 MOT17 videos and 80 Anti-UAV files we compared (`docs/benchmarks/cpp-port-parity.md`).
+- 110 tests: every Python tracker behavior test, ported, plus tests that pin the assignment solver to SciPy's answers. They pass with MSVC on Windows and GCC on Linux.
+
+**Not built yet:** the C++ pipeline (video, detector, timing), TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. There are **no speed results yet**, for the C++ tracker either. Talk about these as the plan, not as achievements.
 
 ### Headline results
 
@@ -215,6 +219,17 @@ See the [edge rule](CONCEPTS.md#edge-rule-tried-shelved) and `docs/benchmarks/ed
 
 **Lesson:** before spending more effort on a stage, cheat on it once and measure. The oracle sets the most that stage can give, and what it leaves behind points at the next problem. Here that's motion between frames, not re-finding the drone.
 
+### The C++ port had to break ties the way SciPy does (#9)
+**In two sentences:** the C++ tracker has to give the same IDs as the Python one, and Hungarian matching can have several equally good answers, so any solver that picks a different one swaps IDs for good ([tie-breaking](CONCEPTS.md#tie-breaking-why-the-port-copies-scipys-solver)). We translated SciPy's solver line by line instead of writing our own, and on 87 real detection files every ID and status matches, with boxes within 2.6e-9 px.
+
+**Problem:** "same logic" isn't enough for the same output. The matching rules in `docs/FORMATS.md` already said the C++ port must use SciPy's algorithm over the same row and column order. A tie only needs two pairings with bit-equal costs, which scripted scenes produce all the time.
+
+**How we found it:** by design, before it could bite: the rule was written when the formats were. What we checked was the result. A test pins the C++ solver to SciPy's printed answers on tie-heavy and rectangular matrices, and mutation testing showed that changing the column scan order or the tie rule makes it fail. Then an ad-hoc comparison of both CLIs on the 7 MOT17 videos and 80 Anti-UAV files found no mismatch in IDs, statuses, classes, missed-frame counts or path lengths. See `docs/benchmarks/cpp-port-parity.md`.
+
+**What we did:** kept every loop in the Python's order too (high detections before low, tracks by ID, detections in file order, the merge's tie broken by track index), and made the file writer print numbers the way Python does. The ported behavior tests caught one bug on the way, in a test rather than the tracker: a reference to an element of a temporary list, which C++ compiles without complaint and Python can't express.
+
+**Lesson:** when two programs must agree, "both optimal" isn't "the same". Port the tie-breaking along with the algorithm, and check on real data, where ties you didn't script turn up.
+
 ---
 
 ## What didn't work
@@ -253,4 +268,5 @@ Know these before someone asks.
 - **Sparse scenes can swap IDs.** With nobody else in view, a person who walks out can hand their ID to a same-size newcomer within about a second. The gate and merge reach far around a big box, and the cap only binds in a crowd. The size check catches some cases, and on MOT17 most risky pairs are mid-frame, not at the edge. Fixing it properly needs appearance re-ID (#37, `docs/benchmarks/edge-rule.md`).
 - **Most of the Anti-UAV gap is re-association, and closing it generally is hard.** An oracle that knows there's one drone reaches 93.3% at 20% deletion on val (an upper bound, not a result). A general rule would need 79.9% of that gain to hit the target. The 2.8 points even the oracle leaves are frames where the drone jumps away from a tracked track (#34, `docs/benchmarks/antiuav-single-target.md`).
 - **Anti-UAV tests the tracker, not the whole system.** Detections are the labeled boxes with deletions added, not a real detector's output.
-- **No speed claims yet.** Everything so far runs in Python on CPU ONNX Runtime. The C++, TensorRT and CUDA work, and its before-and-after numbers, hasn't been built yet.
+- **No speed claims yet.** Everything with a detector runs in Python on CPU ONNX Runtime. The C++ tracker exists but hasn't been timed (#10), and the C++ pipeline, TensorRT and CUDA work, and their before-and-after numbers, haven't been built yet.
+- **Python–C++ parity is checked on 87 files, not all of them.** No mismatch turned up, but a tie the two solvers break differently could still exist in files we didn't run. The committed check is #10.

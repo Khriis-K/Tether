@@ -212,7 +212,9 @@ DetectionFrames searching_next_to(const std::vector<Box>& neighbor, const Box& r
 
 Box returned_at(double offset) {
   Box returned = box_at(X + offset * SIZE);
-  if (offset >= 1.0) EXPECT_LT(iou(box_at(X), returned), MIN_IOU);
+  if (offset >= 1.0) {
+    EXPECT_LT(iou(box_at(X), returned), MIN_IOU);
+  }
   return returned;
 }
 

@@ -165,14 +165,22 @@ TEST(Cli, PassesTheDampingToTheTracker) {
 TEST(Cli, HelpExitsZero) { EXPECT_EQ(cli({"--help"}), 0); }
 
 TEST(Cli, BadArgumentsAreAnErrorWithAMessage) {
-  std::string err;
-  EXPECT_NE(cli({"only-one-path"}, &err), 0);
-  EXPECT_FALSE(err.empty());
-  EXPECT_NE(cli({"a", "b", "--no-such-option", "1"}, &err), 0);
-  EXPECT_NE(cli({"a", "b", "--confirm-frames"}, &err), 0);
-  EXPECT_NE(cli({"a", "b", "--confirm-frames", "three"}, &err), 0);
-  EXPECT_NE(cli({"a", "b", "--min-score", "0.5x"}, &err), 0);
-  EXPECT_NE(cli({"a", "b", "c"}, &err), 0);
+  // Real files, so the only thing wrong is the argument: exit 2, as argparse.
+  auto dets = temp_path("dets.jsonl").string();
+  auto out = temp_path("out.jsonl").string();
+  save_detections(dets, {{}});
+  ASSERT_EQ(cli({dets, out}), 0);
+  for (std::vector<std::string> args : {std::vector<std::string>{dets},
+                                        {dets, out, "--no-such-option", "1"},
+                                        {dets, out, "--confirm-frames"},
+                                        {dets, out, "--confirm-frames", "three"},
+                                        {dets, out, "--confirm-frames", "3.5"},
+                                        {dets, out, "--min-score", "0.5x"},
+                                        {dets, out, "extra"}}) {
+    std::string err;
+    EXPECT_EQ(cli(args, &err), 2) << args.back();
+    EXPECT_FALSE(err.empty()) << args.back();
+  }
 }
 
 TEST(Cli, MissingDetectionFileIsAnErrorWithAMessage) {

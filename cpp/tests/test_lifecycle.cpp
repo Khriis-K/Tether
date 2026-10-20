@@ -71,7 +71,9 @@ TEST(Lifecycle, OneFrameFalseDetectionNeverBecomesAConfirmedTrack) {
   EXPECT_EQ(blip.status, "tentative");
   for (size_t f = 6; f < outputs.size(); ++f) EXPECT_EQ(find_id(outputs[f], blip.id), nullptr) << "frame " << f;
   for (const auto& tracks : outputs)
-    if (const auto* real = find_id(tracks, real_id)) EXPECT_NE(real->status, "searching");
+    if (const auto* real = find_id(tracks, real_id)) {
+      EXPECT_NE(real->status, "searching");
+    }
 }
 
 TEST(Lifecycle, TentativeTrackThatMissesAFrameIsDroppedBeforeConfirming) {

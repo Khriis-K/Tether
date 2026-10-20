@@ -69,6 +69,17 @@ TEST(Merge, DuplicateBornWhileTheOriginalSearchesEndsWithTheOriginalId) {
   EXPECT_EQ(outputs.back().size(), 1u);  // the younger ID is gone
 }
 
+TEST(Merge, NothingIsMergedBeforeTheDuplicateWouldBeConfirmed) {
+  // On the duplicate's second frame it is still tentative, so A keeps searching beside it.
+  auto outputs = run_merge(jumped(JUMP, SIZE, {}, CONFIRM - 1));
+
+  const auto* a = find_id(outputs.back(), a_id(outputs));
+  ASSERT_NE(a, nullptr);
+  EXPECT_EQ(a->status, "searching");
+  EXPECT_NE(at_jump(outputs, JUMP).id, a_id(outputs));
+  EXPECT_EQ(at_jump(outputs, JUMP).status, "tentative");
+}
+
 TEST(Merge, MergedTrackKeepsFollowingTheObject) {
   // The older track takes over the new track's motion; updating its own
   // coasted filter with a detection 6 box sizes away would leave it off the object.

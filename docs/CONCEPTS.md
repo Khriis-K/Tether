@@ -297,7 +297,19 @@ Libraries like NumPy and ONNX Runtime do their heavy work in compiled C/C++ unde
 ### Floating-point differences between languages
 Decimal math on computers is rounded, and the result can depend on the order of operations. Python (NumPy) and C++ can do the same math in a slightly different order and get answers that differ in the last few digits. Neither one is wrong.
 
-**In Tether:** that's why the Python-vs-C++ check requires *matching* outputs (same IDs and statuses, boxes within a tiny tolerance), not bit-identical ones.
+**In Tether:** that's why the Python-vs-C++ check requires *matching* outputs (same IDs and statuses, boxes within a tiny tolerance), not bit-identical ones. On real detection files the C++ port's boxes differ from Python's by at most 2.6e-9 px (`docs/benchmarks/cpp-port-parity.md`).
+
+### Tie-breaking (why the port copies SciPy's solver)
+When two different answers are exactly as good, which one an algorithm returns depends on details like the order it scans its inputs. That's not a bug, but two implementations that both find "an optimal answer" can still disagree.
+
+**In Tether:** Hungarian matching can have several equally cheap pairings, most often in symmetric scripted scenes. If the C++ tracker picked a different one than Python, the IDs would swap and stay swapped. So the C++ solver is a line-by-line translation of SciPy's `linear_sum_assignment`, including the order it scans columns in and its rule for ties, and it's tested against SciPy's answers on tie-heavy matrices. Every other loop (tracks in ID order, detections in file order) follows the Python too.
+
+**Gotcha:** a textbook Hungarian implementation would pass every test that has one best answer, and could still drift from Python on real data, wherever a tie came up.
+
+### Shortest round-trip number printing
+Printing a decimal number with the fewest digits that still read back to exactly the same value: `0.1` rather than `0.1000000000000000055511151231257827`. Python's `repr` and `json.dumps` do this, and C++17's `std::to_chars` can too.
+
+**In Tether:** the C++ file writer prints numbers exactly as Python's `json.dumps` does, including when it switches to scientific notation (`1e-05`, `1e+16`), so track files from the two trackers look the same and a text diff shows only real differences.
 
 ---
 

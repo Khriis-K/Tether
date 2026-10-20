@@ -134,7 +134,7 @@ std::vector<Track> Tracker::update(const std::vector<Detection>& input) {
   for (size_t di = 0; di < high_count; ++di) {
     if (matched_det[di]) continue;
     const auto& box = detections[di].box;
-    State track{next_id_++, box, detections[di].cls, BoxFilter(box)};
+    State track{next_id_++, box, detections[di].cls, BoxFilter(box), {}};
     track.observe(box, settings_.confirm_frames);
     survivors.push_back(std::move(track));
   }
