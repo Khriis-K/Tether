@@ -25,13 +25,14 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 - A MOT17 evaluation through TrackEval, and a ByteTrack baseline on the same detections.
 - An Anti-UAV dropout simulator with its own scoring.
 - A single-target prior that knows there's one drone (`--single-target`), kept only as a diagnostic upper bound, never a default.
-- 230 automated tests.
+- 258 automated tests.
 
 **Built (C++):**
-- The same tracker and a `tether-track` CLI with the same options and file formats, built with CMake. Its IDs and statuses match the Python tracker's on every frame of the 7 MOT17 videos and 80 Anti-UAV files we compared (`docs/benchmarks/cpp-port-parity.md`).
-- 112 tests: every Python tracker behavior test, ported, plus tests that pin the assignment solver to SciPy's answers. They pass with MSVC on Windows and GCC on Linux.
+- The same tracker and a `tether-track` CLI with the same options and file formats, built with CMake.
+- A committed match check, `tether-parity`, that runs both trackers on the same files and names the first differing frame and track. IDs and statuses match on every frame of all 462 real detection files we have: 7 MOT17 videos, plus 91 Anti-UAV test clips under 5 dropout conditions (`docs/benchmarks/cpp-tracking-speed.md`). `ctest` runs it on scripted scenes against every build.
+- 120 tests: every Python tracker behavior test, ported, plus tests that pin the assignment solver to SciPy's answers, plus the timing tool's tests. The tracker tests pass with MSVC on Windows and GCC on Linux.
 
-**Not built yet:** the C++ pipeline (video, detector, timing), TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. There are **no speed results yet**, for the C++ tracker either. Talk about these as the plan, not as achievements.
+**Not built yet:** the C++ pipeline (video, detector, timing), TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. The only speed result so far is the **tracking step alone**; there's no whole-pipeline speed number. Talk about the rest as the plan, not as achievements.
 
 ### Headline results
 
@@ -41,6 +42,7 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 | Close to ByteTrack at the shipped input size (640) | Tether 33.1 / 37.6 / 529; ByteTrack 33.5 / 37.9 / 549 | Slightly behind on HOTA and IDF1, ahead on ID switches. |
 | Fixing the matching order closed most of the gap | 1270 → 779 ID switches, 35.6 → 40.9 HOTA (1280×736) | Found by ablation, not by guessing. See [the story](#tether-made-470-more-id-switches-than-bytetrack-22-23). |
 | Higher input resolution, not a bigger model, fixed detection | Detector recall 33.7% → 54.6% across the 7 videos, at similar precision (85.4% → 84.3%) | A 3× bigger model at 640 still missed small people. |
+| The C++ tracking step is much faster than the Python one | 14.1× on MOT17 (2.52 → 0.18 ms per frame), 35.0× on Anti-UAV (0.172 → 0.0049 ms) | The tracking step alone, on one laptop CPU, median of 5 runs, outputs checked equal. Not the whole pipeline, where the detector dominates. See `docs/benchmarks/cpp-tracking-speed.md`. |
 | Recovers the drone after gaps far more often | Anti-UAV **test** (run once, at the end): ID kept at 20% deletion 26.1% → 84.0%; 1 s gaps recovered 27.2% → 88.9%. Val, which we tuned on: 85.3% and 88.8%. | Detections are the labeled boxes, so this tests the tracker, not the detector. Gap recovery meets its 80% target. ID kept doesn't: the target is 95% of the reachable ceiling, 89.3% on test, so it's 5.3 points short. See `docs/benchmarks/antiuav-dropout.md`. |
 
 ### Debugging playbook
@@ -230,6 +232,17 @@ See the [edge rule](CONCEPTS.md#edge-rule-tried-shelved) and `docs/benchmarks/ed
 
 **Lesson:** when two programs must agree, "both optimal" isn't "the same". Port the tie-breaking along with the algorithm, and check on real data, where ties you didn't script turn up.
 
+### The C++ tracking step is 14× faster on crowds and 35× on drones (#10)
+**In two sentences:** a committed check, `tether-parity`, now runs both trackers on the same files, fails on the first frame where IDs, statuses or boxes (beyond 1e-6 px) differ, and times the tracking step alone in each language ([microbenchmark](CONCEPTS.md#microbenchmark-timing-one-step-alone)). On all 462 real files everything matches, and C++ is 14.1× faster on MOT17 and 35.0× faster on Anti-UAV.
+
+**Problem:** #9's match was an ad-hoc script on 87 files, and the C++ tracker had never been timed. The spec asks for the tracking step to be 10× or more faster.
+
+**How we found it:** the check compares more than asked (class, missed frames, path) and is itself tested by mutation testing. Four timing bugs a test should catch got through at first. The worst: a timer started after the loop still reports a positive time, a few nanoseconds, so "time > 0" proved nothing. Code review found that a NaN box would have passed, since `abs(nan - x) > tol` is False. The first full Anti-UAV run was also thrown away. A file showed a 0.02× "speedup" because the mutation script was rewriting `parity.py` while the run kept starting new processes that imported it ([the same trap as before](#experiments-changed-while-they-ran)). Everything was rerun on frozen code.
+
+**What we did:** a C++ `tether-time-track` that times only `Tracker::update`, the same work Python's side times, and a `ctest` test that runs the check on scripted scenes against every build. Making the C++ tracker confirm tracks one frame late made it fail at "frame 2, track 1: status tracked (Python) vs tentative (C++)". Why drones gain more than crowds is a hypothesis, not measured: with one or two tracks, Python's time is mostly fixed per-frame overhead, which C++ doesn't have. See `docs/benchmarks/cpp-tracking-speed.md`.
+
+**Lesson:** a check is only as good as the failures it can see. Test it with broken inputs (wrong IDs, NaNs, a dead timer) before trusting its "pass". And keep the speed claim to what was timed: one step, not the pipeline.
+
 ---
 
 ## What didn't work
@@ -268,5 +281,5 @@ Know these before someone asks.
 - **Sparse scenes can swap IDs.** With nobody else in view, a person who walks out can hand their ID to a same-size newcomer within about a second. The gate and merge reach far around a big box, and the cap only binds in a crowd. The size check catches some cases, and on MOT17 most risky pairs are mid-frame, not at the edge. Fixing it properly needs appearance re-ID (#37, `docs/benchmarks/edge-rule.md`).
 - **Most of the Anti-UAV gap is re-association, and closing it generally is hard.** An oracle that knows there's one drone reaches 93.3% at 20% deletion on val (an upper bound, not a result). A general rule would need 79.9% of that gain to hit the target. The 2.8 points even the oracle leaves are frames where the drone jumps away from a tracked track (#34, `docs/benchmarks/antiuav-single-target.md`).
 - **Anti-UAV tests the tracker, not the whole system.** Detections are the labeled boxes with deletions added, not a real detector's output.
-- **No speed claims yet.** Everything with a detector runs in Python on CPU ONNX Runtime. The C++ tracker exists but hasn't been timed (#10), and the C++ pipeline, TensorRT and CUDA work, and their before-and-after numbers, haven't been built yet.
-- **Python–C++ parity is checked on 87 files, not all of them.** No mismatch turned up, but a tie the two solvers break differently could still exist in files we didn't run. The committed check is #10.
+- **The only speed claim is the tracking step alone.** It's 14.1× (MOT17) and 35.0× (Anti-UAV) faster in C++, on one laptop CPU. Everything with a detector still runs in Python on CPU ONNX Runtime, and the C++ pipeline, TensorRT and CUDA work, and their before-and-after numbers, haven't been built yet. The whole-pipeline speedup will be much smaller, because the detector dominates. Why drones gain more than crowds hasn't been profiled.
+- **Python–C++ parity is checked on the files we have.** All 462 real files match, with boxes within 2.6e-9 px, but a tie the two solvers break differently could still turn up on inputs we haven't run. `tether-parity` will show it at the first frame where it happens.

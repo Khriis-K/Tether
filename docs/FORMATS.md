@@ -79,6 +79,23 @@ Steps are stored as times, not durations, so the parallel pipeline can use the s
 
 P99 is the nearest-rank value: sort the values and take number ⌈0.99 × n⌉ (counting from 1). It is always a real measured value; with fewer than 100 values it's the largest. Every frame counts, including the slow first ones (model warm-up, opening the window), so on short runs P99 mostly reports warm-up. Use runs of a few hundred frames or more. The results are saved as JSON next to the log (`timing-….summary.json`) or wherever `--out` says.
 
+## Parity results file
+
+`tether-parity` (`python/tether/parity.py`) runs detection files through both trackers, compares them and times the tracking step in each. It writes one JSON file (`--out`, default `results/parity-<date>-<time>.json`):
+
+```json
+{"tolerance": 1e-06, "repeats": 5, "all_match": true, "speedup": 14.1,
+ "inputs": [{"name": "MOT17-09-FRCNN.jsonl", "frames": 525, "match": true, "first_mismatch": null,
+             "max_box_difference": 5.4e-10, "python_ms": 1139.6, "cpp_ms": 83.0, "speedup": 13.7,
+             "path": "results/mot17/detections/yolo26n/MOT17-09-FRCNN.jsonl"}]}
+```
+
+- `match` holds when every frame has the same tracks in the same order with the same `id`, `status`, `class`, `frames_since_seen` and path length, and every `box`, `predicted_box` and path coordinate is within `tolerance` px. Otherwise `first_mismatch` is `{"frame", "track_id", "what"}` for the first difference (`track_id` is null when the frame counts differ).
+- `python_ms` and `cpp_ms` are the median over `repeats` runs of a fresh default tracker's `update` over every frame of the file, with no file reading or writing. `speedup` is their ratio; the top-level one is total Python time over total C++ time across all inputs.
+- `path` is null for the built-in scripted scenes (`--scripted`).
+
+The C++ side is timed by `tether-time-track detections.jsonl [--repeats N]`, which prints one line: `{"frames": 525, "repeats_ms": [80.4, 89.6, 86.0]}`.
+
 ## Matching rules
 
 Both trackers must follow these rules exactly, or their IDs will drift apart.

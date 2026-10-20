@@ -276,6 +276,13 @@ Speeding up one part of a job only helps in proportion to how much of the total 
 
 **In Tether:** this is why the spec reports the tracking-step speedup (expected to be large) and the whole-pipeline speedup (expected to be smaller, because the detector dominates) as separate numbers.
 
+### Microbenchmark (timing one step alone)
+Timing a single piece of code in isolation, away from everything around it, so its own speed is all you measure. The usual rules: time only that code, run it several times and keep the median, and do exactly the same work on both sides of a comparison.
+
+**In Tether:** `tether-parity` times the tracking step alone. A fresh tracker runs `update` over a whole detection file, with file reading and writing left out, 5 times per language, keeping the median. The C++ tracking step is 14.1× faster on MOT17 and 35.0× faster on Anti-UAV (`docs/benchmarks/cpp-tracking-speed.md`).
+
+**Gotcha:** a microbenchmark can be fooled in both directions. A timer that starts in the wrong place still returns a positive number, a few nanoseconds. A test only caught that once it demanded a time no real run could beat. And a big speedup on one step says little about the whole program ([Amdahl's law](#amdahls-law)).
+
 ### Profiling (Nsight Systems)
 Measuring where time actually goes before optimizing. Nsight Systems is NVIDIA's timeline profiler: it shows CPU threads, GPU kernels, and memory copies side by side.
 
@@ -297,7 +304,7 @@ Libraries like NumPy and ONNX Runtime do their heavy work in compiled C/C++ unde
 ### Floating-point differences between languages
 Decimal math on computers is rounded, and the result can depend on the order of operations. Python (NumPy) and C++ can do the same math in a slightly different order and get answers that differ in the last few digits. Neither one is wrong.
 
-**In Tether:** that's why the Python-vs-C++ check requires *matching* outputs (same IDs and statuses, boxes within a tiny tolerance), not bit-identical ones. On real detection files the C++ port's boxes differ from Python's by at most 2.6e-9 px (`docs/benchmarks/cpp-port-parity.md`).
+**In Tether:** that's why the Python-vs-C++ check requires *matching* outputs (same IDs and statuses, boxes within a tiny tolerance), not bit-identical ones. `tether-parity` checks this to 1e-6 px. On all 462 real detection files we have, the C++ port's boxes differ from Python's by at most 2.6e-9 px (`docs/benchmarks/cpp-tracking-speed.md`).
 
 ### Tie-breaking (why the port copies SciPy's solver)
 When two different answers are exactly as good, which one an algorithm returns depends on details like the order it scans its inputs. That's not a bug, but two implementations that both find "an optimal answer" can still disagree.

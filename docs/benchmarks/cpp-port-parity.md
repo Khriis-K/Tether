@@ -9,7 +9,7 @@
 - Both trackers at their defaults, run through their CLIs (`python -m tether.cli` and `cpp/build/Release/tether-track`), Release build, MSVC 19.44 on Windows 11, Python 3.14 with SciPy 1.16.3.
 - Inputs: `results/mot17/detections/yolo26n/` (YOLO26n at 640, all 7 videos, 5,316 frames), and the first 40 clips (by file name) of the Anti-UAV test split from `results/antiuav/detections/`, once at 20% random deletion (`drop-0.2-seed0`) and once with 1 s gaps (`gap-1.0s`). Using test files is fine here: nothing was tuned on this comparison. The Anti-UAV files exercise the search gate, its cap and the duplicate merge far more than MOT17 does.
 - Compared per frame: the list of (id, status, class, frames_since_seen, path length) must be equal; then the largest absolute difference over every `box` and `predicted_box` coordinate.
-- The comparison was an ad-hoc script, not committed. The committed check, which also times the tracking step, is #10.
+- The comparison was an ad-hoc script, not committed. The committed check, which also times the tracking step, is #10 (`tether-parity`). It has since run on 462 files with no mismatch: see [cpp-tracking-speed.md](cpp-tracking-speed.md).
 
 ## Results
 
@@ -29,6 +29,6 @@ The files are not byte-identical between the languages: the last digits of some 
 
 ## Caveats
 
-- 87 files is what we ran, not every file we have. A tie the solvers break differently would show up as an ID mismatch; none did, but rare ties in other files can't be ruled out until #10 runs the check more widely.
+- 87 files is what we ran here. #10's check then covered all 91 Anti-UAV test clips under all 5 dropout conditions plus the 7 MOT17 videos, with no mismatch. Rare ties in inputs we haven't run still can't be ruled out.
 - The Python tracker's `--single-target` diagnostic (#34) is not ported, by design, so it wasn't compared.
 - MOT17 was run at 640 only, not at 1280×736.
