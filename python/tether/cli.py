@@ -41,6 +41,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--merge-reach-growth", type=float, default=MERGE_REACH_GROWTH,
                         help="added to the merge reach per frame the older track has missed "
                              f"(default {MERGE_REACH_GROWTH})")
+    parser.add_argument("--frame-size", type=int, nargs=2, metavar=("WIDTH", "HEIGHT"),
+                        help="the video's frame size in pixels; turns on the edge rule, so a track "
+                             "last seen at the frame edge never hands its ID to a newcomer "
+                             "(default: none, rule off)")
     args = parser.parse_args(argv)
 
     tracker = Tracker(confirm_frames=args.confirm_frames,
@@ -51,7 +55,8 @@ def main(argv: list[str] | None = None) -> int:
                       search_gate_cap=args.search_gate_cap,
                       coast_damping=args.coast_damping,
                       merge_reach=args.merge_reach,
-                      merge_reach_growth=args.merge_reach_growth)
+                      merge_reach_growth=args.merge_reach_growth,
+                      frame_size=tuple(args.frame_size) if args.frame_size else None)
     save_tracks(args.tracks, [tracker.update(dets) for dets in load_detections(args.detections)])
     return 0
 

@@ -105,8 +105,9 @@ def main(argv: list[str] | None = None) -> int:
             timing_log.parent.mkdir(parents=True, exist_ok=True)
             print(f"logging timing to {timing_log}")
             prepare_frame = partial(prepare, input_size=detect.input_size)
-            save_timings(timing_log, timed_tracking(video.frames(args.source), prepare_frame, detect.detect,
-                                                Tracker(), show_frame, clock_ms))
+            frames, frame_size = video.open_video(args.source)
+            save_timings(timing_log, timed_tracking(frames, prepare_frame, detect.detect,
+                                                Tracker(frame_size=frame_size), show_frame, clock_ms))
     except KeyboardInterrupt:
         pass  # Ctrl-C ends a webcam run; frames written so far make a valid detection file or timing log
     finally:

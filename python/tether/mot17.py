@@ -7,7 +7,8 @@ combined results are saved as JSON.
 
 The tracker is any command called as `<command> DETECTIONS TRACKS` that reads a
 detection file and writes a track file (see docs/FORMATS.md), so the Python
-tracker, the C++ tracker and ByteTrack are all scored the same way.
+tracker, the C++ tracker and ByteTrack are all scored the same way. `{width}`
+and `{height}` in the command become each video's frame size.
 """
 
 import argparse
@@ -30,6 +31,7 @@ PERSON = 0  # COCO class ID; MOT17 only scores pedestrians
 # Every MOT17 video comes three times, once per public detector (DPM, FRCNN, SDP),
 # with the same frames and ground truth. We bring our own detections, so one copy each.
 SEQUENCE_GLOB = "*-FRCNN"
+DEFAULT_TRACKER = f'"{sys.executable}" -m tether.cli --frame-size {{width}} {{height}}'
 
 
 def save_mot_results(path: str | Path, frames: list[list[Track]], cls: int) -> None:
@@ -111,7 +113,9 @@ def evaluate(mot17_dir: str | Path, work_dir: str | Path, tracker_cmd: str, name
             _dump_sequence(gt_dir / seq, detect, dets)
         print("tracking", flush=True)
         tracks = out_dir / "tracks" / f"{seq}.jsonl"
-        subprocess.run(f'{tracker_cmd} "{dets}" "{tracks}"', shell=True, check=True)
+        info = _seqinfo(gt_dir / seq)
+        cmd = tracker_cmd.replace("{width}", info["imWidth"]).replace("{height}", info["imHeight"])
+        subprocess.run(f'{cmd} "{dets}" "{tracks}"', shell=True, check=True)
         # MOT frames are numbered by line, so a tracker that drops frames would shift every later one.
         track_frames, det_frames = load_tracks(tracks), load_detections(dets)
         if len(track_frames) != len(det_frames):
@@ -128,15 +132,20 @@ def evaluate(mot17_dir: str | Path, work_dir: str | Path, tracker_cmd: str, name
 def _dump_sequence(seq_dir: Path, detect: Callable[[np.ndarray], list[Detection]], path: Path) -> None:
     """Detect every frame of a sequence. Written to a temp file first, so a run
     cut short never leaves a partial file that later runs would reuse."""
-    info = configparser.ConfigParser()
-    info.read(seq_dir / "seqinfo.ini")
-    images = sorted((seq_dir / info["Sequence"]["imDir"]).glob("*" + info["Sequence"]["imExt"]))
-    expected = int(info["Sequence"]["seqLength"])
+    info = _seqinfo(seq_dir)
+    images = sorted((seq_dir / info["imDir"]).glob("*" + info["imExt"]))
+    expected = int(info["seqLength"])
     if len(images) != expected:
         raise ValueError(f"{seq_dir}: found {len(images)} frames, seqinfo.ini says {expected}")
     partial = path.with_suffix(".partial")
     dump_detections((cv2.imread(str(image)) for image in images), detect, partial)
     partial.replace(path)
+
+
+def _seqinfo(seq_dir: Path) -> configparser.SectionProxy:
+    info = configparser.ConfigParser()
+    info.read(seq_dir / "seqinfo.ini")
+    return info["Sequence"]
 
 
 def _report(results: dict) -> str:
@@ -150,8 +159,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tether-mot17", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("mot17", help="the unzipped MOT17 folder (the one holding train/)")
-    parser.add_argument("--tracker", default=f'"{sys.executable}" -m tether.cli',
-                        help="command run as `<command> DETECTIONS TRACKS` (default: the Python tracker)")
+    parser.add_argument("--tracker", default=DEFAULT_TRACKER,
+                        help="command run as `<command> DETECTIONS TRACKS`; {width} and {height} become "
+                             "the frame size (default: the Python tracker, given the frame size)")
     parser.add_argument("--name", default="tether", help="tracker name for the results folder (default tether)")
     parser.add_argument("--work-dir", default=str(DEFAULT_WORK_DIR),
                         help=f"where detections, tracks and results go (default {DEFAULT_WORK_DIR})")

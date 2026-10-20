@@ -41,6 +41,15 @@ the reach is far wider than the gate because the drone often reappears 5-10 box
 sizes from where it was predicted; in a crowd the cap keeps it from reaching a
 neighbor (docs/benchmarks/antiuav-duplicates.md).
 
+The edge rule: a track whose last observed box touched the frame edge most
+likely left the scene, so neither the gate nor the merge hands its ID to anyone
+else; IoU (stages 1 and 2) still matches it, so an object standing at the edge
+keeps its ID through a missed frame. In a sparse scene the cap never binds, and
+without this a person walking out of frame gave their ID to whoever walked in
+next (#37). A box touches the edge within EDGE_MARGIN of its own height: height,
+since a box clipped at the edge loses width, not height. The rule needs
+`frame_size`; without it, it's off.
+
 Detections scored at least `min_score` are high; those above LOW_SCORE but below
 `min_score` are low, and only ever used in stage 2, so they never start a track;
 the rest are dropped. Detection files can be saved unfiltered and each tracker
@@ -88,6 +97,10 @@ MERGE_REACH = 10.0  # after one missed frame the reach is MERGE_REACH + MERGE_RE
 MERGE_REACH_GROWTH = 1.0  # added per missed frame
 # Velocity is multiplied by this each frame a track goes unmatched; 1 is undamped, 0 holds still.
 COAST_DAMPING = 1.0
+# A box within this many of its own heights of the frame edge touches it. Picked from where the
+# detector puts a cut-off person's box edge: within 0.05 heights for 98-99% of MOT17 people cut off
+# at the left, right or top (docs/benchmarks/edge-rule.md).
+EDGE_MARGIN = 0.05
 
 
 @dataclass
@@ -139,7 +152,8 @@ class Tracker:
                  search_gate_growth: float = SEARCH_GATE_GROWTH,
                  search_gate_cap: float = SEARCH_GATE_CAP,
                  coast_damping: float = COAST_DAMPING, merge_reach: float = MERGE_REACH,
-                 merge_reach_growth: float = MERGE_REACH_GROWTH) -> None:
+                 merge_reach_growth: float = MERGE_REACH_GROWTH,
+                 frame_size: tuple[int, int] | None = None) -> None:
         self._confirm_frames = confirm_frames
         self._max_missing_frames = max_missing_frames
         self._min_score = min_score
@@ -149,6 +163,7 @@ class Tracker:
         self._coast_damping = coast_damping
         self._merge_reach = merge_reach
         self._merge_reach_growth = merge_reach_growth
+        self._frame_size = frame_size  # (width, height), for the edge rule; None turns it off
         self._tracks: list[_TrackState] = []
         self._next_id = 1
 
@@ -167,7 +182,8 @@ class Tracker:
         pairs = self._match_unmatched(lambda t: t.confirmed, _by_iou(), detections, high_allowed, [])
         pairs += self._match_unmatched(lambda t: t.status == "tracked", _by_iou(LOW_MIN_IOU),
                                        detections, low_allowed, pairs)
-        pairs += self._match_unmatched(lambda t: t.status == "searching" and self._gate(t) > 0,
+        pairs += self._match_unmatched(lambda t: (t.status == "searching" and self._gate(t) > 0
+                                                 and not self._left_frame(t)),
                                        self._by_search_gate, detections, high_allowed, pairs)
         pairs += self._match_unmatched(lambda t: not t.confirmed, _by_iou(), detections,
                                        high_allowed, pairs)
@@ -251,8 +267,17 @@ class Tracker:
 
     def _is_duplicate_of(self, old: _TrackState, cls: int, box: Box) -> bool:
         """Whether a new track confirmed on `box` is `old`'s object under a younger ID."""
-        return (old.confirmed and old.cls == cls and _same_size(old.box, box)
+        return (old.confirmed and old.cls == cls and _same_size(old.box, box) and not self._left_frame(old)
                 and center_distance(old.motion.box, box) <= self._capped(old, self._reach(old)))
+
+    def _left_frame(self, track: _TrackState) -> bool:
+        """Whether the track's last observed box touched the frame edge (the edge rule)."""
+        if self._frame_size is None:
+            return False
+        width, height = self._frame_size
+        x1, y1, x2, y2 = track.box
+        margin = EDGE_MARGIN * (y2 - y1)
+        return x1 <= margin or y1 <= margin or x2 >= width - margin or y2 >= height - margin
 
     def _by_search_gate(self, tracks: list[_TrackState], boxes: list[Box],
                         allowed: np.ndarray) -> list[tuple[int, int]]:

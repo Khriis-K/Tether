@@ -18,7 +18,8 @@ the labeled box with IoU of at least MIN_IOU. Without the IoU rule, a track that
 never dies would score 100% on single-drone clips. Results are saved as JSON.
 
 The tracker is any command called as `<command> DETECTIONS TRACKS`, as for
-tether-mot17. Its own settings (like how long a track may search) stay its own.
+tether-mot17, with `{width}` and `{height}` becoming each clip's frame size. Its
+own settings (like how long a track may search) stay its own.
 """
 
 import argparse
@@ -44,27 +45,30 @@ MIN_IOU = 0.5  # a track holds the drone only if it overlaps the labeled box at 
 SETTLE_SECONDS = 2.0  # detections given before each gap, so the track is confirmed and moving
 DROP_RATES = (0.0, 0.2)  # 0 is the baseline: IDs lost with nothing deleted
 GAP_SECONDS = (0.25, 0.5, 1.0)
+DEFAULT_TRACKER = f'"{sys.executable}" -m tether.cli --frame-size {{width}} {{height}}'
 
 
 @dataclass(frozen=True)
 class Clip:
     name: str
     fps: float
+    size: tuple[int, int]  # (width, height)
     boxes: list[Box | None]  # the labeled drone per frame, None where it isn't labeled
 
 
 def load_clip(clip_dir: str | Path) -> Clip:
-    """Read `visible.json` ({exist, gt_rect as x, y, w, h}) and `visible.mp4`'s frame rate."""
+    """Read `visible.json` ({exist, gt_rect as x, y, w, h}) and `visible.mp4`'s frame rate and size."""
     clip_dir = Path(clip_dir)
     labels = json.loads((clip_dir / "visible.json").read_text(encoding="utf-8"))
     # Trust `exist`: an absent drone's rect is [], [0, 0, 0, 0], or sometimes a leftover box.
     boxes = [_corners(rect) if exists else None for exists, rect in zip(labels["exist"], labels["gt_rect"])]
     video = cv2.VideoCapture(str(clip_dir / "visible.mp4"))
     fps, n_frames = video.get(cv2.CAP_PROP_FPS), int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    size = (int(video.get(cv2.CAP_PROP_FRAME_WIDTH)), int(video.get(cv2.CAP_PROP_FRAME_HEIGHT)))
     video.release()
     if len(boxes) != n_frames:
         raise ValueError(f"{clip_dir}: {len(boxes)} labels, but visible.mp4 has {n_frames} frames")
-    return Clip(name=clip_dir.name, fps=fps, boxes=boxes)
+    return Clip(name=clip_dir.name, fps=fps, size=size, boxes=boxes)
 
 
 def to_detections(boxes: list[Box | None]) -> list[list[Detection]]:
@@ -160,7 +164,9 @@ def evaluate(dataset_dir: str | Path, work_dir: str | Path, tracker_cmd: str, na
         for d in (dets.parent, tracks.parent):
             d.mkdir(parents=True, exist_ok=True)
         save_detections(dets, to_detections(given))
-        subprocess.run(f'{tracker_cmd} "{dets}" "{tracks}"', shell=True, check=True)
+        width, height = clip.size
+        cmd = tracker_cmd.replace("{width}", str(width)).replace("{height}", str(height))
+        subprocess.run(f'{cmd} "{dets}" "{tracks}"', shell=True, check=True)
         frames = load_tracks(tracks)
         if len(frames) != len(given):
             raise ValueError(f"{tracks}: {len(frames)} frames, but {dets} has {len(given)}")
@@ -245,8 +251,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gap-seconds", type=float, nargs="*", default=list(GAP_SECONDS),
                         help="gap lengths in seconds, one run each (default 0.25 0.5 1.0)")
     parser.add_argument("--seed", type=int, default=0, help="seed for the random deletion (default 0)")
-    parser.add_argument("--tracker", default=f'"{sys.executable}" -m tether.cli',
-                        help="command run as `<command> DETECTIONS TRACKS` (default: the Python tracker)")
+    parser.add_argument("--tracker", default=DEFAULT_TRACKER,
+                        help="command run as `<command> DETECTIONS TRACKS`; {width} and {height} become "
+                             "the frame size (default: the Python tracker, given the frame size)")
     parser.add_argument("--name", default="tether", help="tracker name for the results folder (default tether)")
     parser.add_argument("--work-dir", default=str(DEFAULT_WORK_DIR),
                         help=f"where detections, tracks and results go (default {DEFAULT_WORK_DIR})")
