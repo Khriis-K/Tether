@@ -102,6 +102,31 @@ def test_on_it_never_fires_while_another_track_is_tracked():
     assert holder(outputs[-1], other).status == "tracked"
 
 
+def test_on_a_return_the_usual_stages_match_is_kept():
+    returned = box_at(X + 0.1 * SIZE)  # overlaps the prediction: stage 1 takes it first
+
+    outputs = run(missed_then_back([returned]), single_target=True)
+
+    assert holder(outputs[-1], returned).id == a_id(outputs)
+
+
+def test_on_a_coasted_box_turned_inside_out_still_takes_the_detection():
+    # Shrinking for 8 frames, then coasting 15, predicts a box with x2 < x1: its size
+    # is negative, so a distance in its box sizes is undefined (seen on Anti-UAV val).
+    def centered(x, size):
+        return (x - size / 2, Y - size / 2, x + size / 2, Y + size / 2)
+
+    returned, farther = box_at(X + FAR * SIZE), box_at(X - (FAR + 10) * SIZE)
+    frames = [[det(centered(X, 40.0 - 4 * i))] for i in range(8)] + [[] for _ in range(15)]
+    frames.append([det(farther), det(returned)])
+
+    outputs = run(frames, single_target=True)
+
+    [coasted] = outputs[-2]
+    assert coasted.predicted_box[2] < coasted.predicted_box[0]
+    assert holder(outputs[-1], returned).id == coasted.id
+
+
 def test_cli_flag_turns_it_on(tmp_path):
     returned = box_at(X + FAR * SIZE)
     dets_path = tmp_path / "dets.jsonl"

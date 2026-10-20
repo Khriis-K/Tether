@@ -304,7 +304,21 @@ def _same_size(last: Box, det: Box) -> bool:
 
 
 def _by_any_distance(tracks: list[_TrackState], boxes: list[Box], allowed: np.ndarray) -> list[tuple[int, int]]:
-    return match_by_distance([t.motion.box for t in tracks], boxes, allowed, max_distance=math.inf)
+    """The one track's nearest allowed box, at any distance.
+
+    In pixels, not box sizes: for one track the ranking is the same, and a long
+    coast can turn the predicted box inside out, leaving it no size to divide by.
+    """
+    if not tracks:  # an earlier stage already matched it
+        return []
+    [track] = tracks
+    cx, cy = _center(track.motion.box)
+    candidates = [(math.dist((cx, cy), _center(box)), di) for di, box in enumerate(boxes) if allowed[0, di]]
+    return [(0, min(candidates)[1])] if candidates else []
+
+
+def _center(box: Box) -> Point:
+    return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
 
 
 def _by_one_hit_distance(tracks: list[_TrackState], boxes: list[Box], allowed: np.ndarray) -> list[tuple[int, int]]:
