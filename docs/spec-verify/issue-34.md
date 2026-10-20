@@ -32,7 +32,7 @@ Result: VERIFIED
 
 ### Criterion C4: it never fires when more than one track is searching
 Test: test_on_it_never_fires_with_two_searching_tracks
-Mutation: the one-confirmed-track check is dropped, so every searching track gets an unlimited match.
+Mutation: the one-confirmed-track check is dropped, so the first searching track gets an unlimited match whatever else is confirmed.
 Result: VERIFIED
 
 ### Criterion C5: it never fires while any track is tracked
