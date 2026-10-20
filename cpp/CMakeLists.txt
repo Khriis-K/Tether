@@ -20,11 +20,18 @@ endif()
 
 add_library(tether_core
   src/tether/assignment.cpp
+  src/tether/cli.cpp
   src/tether/formats.cpp
+  src/tether/kalman.cpp
   src/tether/matching.cpp
+  src/tether/tracker.cpp
 )
 target_include_directories(tether_core PUBLIC src)
 target_link_libraries(tether_core PRIVATE nlohmann_json::nlohmann_json)
+
+add_executable(tether_track apps/tether_track.cpp)
+target_link_libraries(tether_track PRIVATE tether_core)
+set_target_properties(tether_track PROPERTIES OUTPUT_NAME tether-track)
 
 option(TETHER_BUILD_TESTS "Build the tests" ON)
 if(TETHER_BUILD_TESTS)
@@ -38,8 +45,15 @@ if(TETHER_BUILD_TESTS)
   enable_testing()
   add_executable(tether_tests
     tests/test_assignment.cpp
+    tests/test_cli.cpp
+    tests/test_coast_damping.cpp
     tests/test_formats.cpp
+    tests/test_lifecycle.cpp
+    tests/test_low_score.cpp
     tests/test_matching.cpp
+    tests/test_merge.cpp
+    tests/test_search_gate.cpp
+    tests/test_tracker.cpp
   )
   target_link_libraries(tether_tests PRIVATE tether_core GTest::gtest_main)
   include(GoogleTest)
