@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from tether.formats import STEPS, StepTimes, load_timings
+from tether.formats import STEPS, StepTimes, load_dropped, load_timings
 
 
 def p99(values: list[float]) -> float:
@@ -47,7 +47,8 @@ def _stats(values: list[float]) -> dict:
 def _report(summary: dict) -> str:
     rows = [("frame time", summary["frame_time_ms"]), ("end-to-end delay", summary["end_to_end_delay_ms"])]
     rows += [(f"  {step}", stats) for step, stats in summary["steps_ms"].items()]
-    lines = [f"{summary['frames']} frames, {summary['fps']:.1f} FPS",
+    dropped = f", {summary['dropped_frames']} dropped by the camera" if "dropped_frames" in summary else ""
+    lines = [f"{summary['frames']} frames, {summary['fps']:.1f} FPS{dropped}",
              f"{'':18}{'mean ms':>10}{'P99 ms':>10}"]
     lines += [f"{name:18}{stats['mean']:10.2f}{stats['p99']:10.2f}" for name, stats in rows]
     return "\n".join(lines)
@@ -60,6 +61,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     summary = summarize(load_timings(args.log))
+    dropped = load_dropped(args.log)
+    if dropped is not None:  # webcam runs of the C++ pipeline count them
+        summary["dropped_frames"] = dropped
     out = Path(args.out) if args.out else Path(args.log).with_suffix(".summary.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

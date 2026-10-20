@@ -5,6 +5,8 @@
 
 #include <array>
 #include <filesystem>
+#include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,5 +43,38 @@ void save_detections(const std::filesystem::path& path, const DetectionFrames& f
 DetectionFrames load_detections(const std::filesystem::path& path);
 void save_tracks(const std::filesystem::path& path, const TrackFrames& frames);
 TrackFrames load_tracks(const std::filesystem::path& path);
+
+// One frame of a timing log: when each pipeline step started and ended.
+using Span = std::array<double, 2>;  // [start, end] in milliseconds from a steady clock
+struct StepTimes {
+  Span capture, prep, detect, track, draw;
+  std::optional<int> dropped;  // frames the camera dropped just before this one; webcam runs only
+};
+
+// Writes a detection file one frame at a time, flushing each line, so a run cut
+// short (a webcam stopped with Ctrl-C) still leaves a valid file. Throws
+// std::runtime_error when the file can't be opened or written.
+class DetectionWriter {
+ public:
+  explicit DetectionWriter(const std::filesystem::path& path);
+  void write(const std::vector<Detection>& detections);
+
+ private:
+  std::filesystem::path path_;
+  std::ofstream file_;
+  size_t frame_ = 0;
+};
+
+// The same for a timing log (docs/FORMATS.md, "Timing log").
+class TimingLogWriter {
+ public:
+  explicit TimingLogWriter(const std::filesystem::path& path);
+  void write(const StepTimes& times);
+
+ private:
+  std::filesystem::path path_;
+  std::ofstream file_;
+  size_t frame_ = 0;
+};
 
 }  // namespace tether

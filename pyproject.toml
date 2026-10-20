@@ -25,6 +25,7 @@ tether-mot17 = "tether.mot17:main"
 tether-bytetrack = "tether.bytetrack:main"
 tether-antiuav = "tether.antiuav:main"
 tether-parity = "tether.parity:main"
+tether-pipeline-compare = "tether.pipeline_compare:main"
 
 [tool.setuptools.packages.find]
 where = ["python"]
