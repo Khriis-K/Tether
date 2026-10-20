@@ -196,6 +196,13 @@ The best score any system could get under a rule it can't break, worked out from
 
 **Gotcha:** it's an upper bound, not a forecast. It ignores everything else that loses IDs (confirmation, the IoU rule, bad matches). And with no search limit it's 100% by construction, because nothing else can go wrong on a single-drone clip; the cost of a longer window only shows up in crowds, where a dead track can be revived on the wrong person.
 
+### Oracle experiment (upper bound)
+Give one stage of the system information it couldn't really have, and measure how much the score goes up. That's the most that stage could ever add, so it tells you whether working on it is worth it before you do.
+
+**In Tether:** the single-target prior (`tether-track --single-target`, #34) knows each Anti-UAV clip has one drone. When the only confirmed track is searching, it takes the nearest detection anywhere, with no gate. At 20% deletion on val that takes ID kept from 85.3% to 93.3% against a 96.5% [ceiling](#reachable-ceiling), so perfect re-association is worth 7.9 of the 11.2 missing points. Most of the rest is frames where the drone jumps away from a track that's still tracked (`docs/benchmarks/antiuav-single-target.md`).
+
+**Gotcha:** an oracle's number is never a result. It's off by default, never counts toward a target, and never ships: on general footage "one object" is false, and with one person in view it would hand a lost ID to anyone who walks in. Also check it actually fires where you run it: on MOT17 its condition never holds, so it scores the same as the default.
+
 ### Train/test leakage
 Scoring a model on data it was trained on. The numbers look great and mean nothing, like grading a student on the exact homework they studied. Published MOT17 trackers often use detectors trained on MOT17's train videos. Tether evaluates *on* those videos, so it can't use such a detector without a held-out split.
 

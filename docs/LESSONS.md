@@ -24,7 +24,8 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 - A webcam/video demo and per-step timing logs.
 - A MOT17 evaluation through TrackEval, and a ByteTrack baseline on the same detections.
 - An Anti-UAV dropout simulator with its own scoring.
-- 214 automated tests.
+- A single-target prior that knows there's one drone (`--single-target`), kept only as a diagnostic upper bound, never a default.
+- 229 automated tests.
 
 **Not built yet:** the C++ port, TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. There are **no speed results yet**. Talk about these as the plan, not as achievements.
 
@@ -43,7 +44,7 @@ The habits these stories taught, in the order you'd reach for them:
 1. **Check the ceiling upstream.** Before tuning a stage, compare its output to what its input allows. A tracker can't beat its detector. *([The first MOT17 score](#the-first-mot17-score-was-low-and-the-tracker-wasnt-to-blame-6))*
 2. **Check your metric before you believe it.** Run the null case: what would a useless system score? And make a homemade metric follow the official rules. *([The faked "ID kept" score](#the-id-kept-score-could-be-faked-by-doing-nothing-8); [our own precision numbers](#our-own-precision-numbers-were-wrong))*
 3. **Change one thing at a time.** When two systems differ, ablate. The obvious suspect is often wrong. *([Tether vs. ByteTrack](#tether-made-470-more-id-switches-than-bytetrack-22-23))*
-4. **Compare each stage to its best possible version.** The stage that looks weak may already be at its limit, and the real loss may be somewhere else. *([Losing the drone](#tether-found-the-drone-but-kept-losing-its-id-8-29))*
+4. **Compare each stage to its best possible version.** The stage that looks weak may already be at its limit, and the real loss may be somewhere else. An oracle that cheats on one stage tells you that stage's most. *([Losing the drone](#tether-found-the-drone-but-kept-losing-its-id-8-29); [the oracle](#a-perfect-re-association-would-get-most-of-the-way-not-all-34))*
 5. **Test on a benchmark that can show the cost.** A change tuned on one dataset needs a second one where it can fail, checked per video, not just in total. *([Drones vs. crowds](#the-fix-for-drones-broke-crowds-29-35))*
 6. **Judge by the outcome, not a stand-in.** A better intermediate number doesn't always mean a better result. *([Damping](#better-predictions-didnt-mean-more-re-matches-30); [fewer new IDs](#fewer-new-ids-same-score-31))*
 7. **Write the ceiling next to the target.** If the best possible score is below the target, tuning can't get there. *([Two IDs at once](#the-drone-held-two-ids-at-once-36-33))*
@@ -203,6 +204,17 @@ See the [edge rule](CONCEPTS.md#edge-rule-tried-shelved) and `docs/benchmarks/ed
 
 **Lesson:** a quality gate can pass for the wrong reason. A fallback rate counts how many points the estimate used, not whether it was right, so pair it with a check on the outcome. And look at the data before the research summary: the telemetry the research ruled out was on screen the whole time.
 
+### A perfect re-association would get most of the way, not all (#34)
+**In two sentences:** before porting to C++, we wanted to know whether more Python work on re-finding the drone was worth it, so we built an oracle that knows each clip has one drone and lets a lost track take the detection anywhere. It recovers 7.9 of the 11.2 points between Tether and the reachable ceiling (85.3% → 93.3% on val at 20% deletion); most of the rest is the drone jumping away from a track that was still tracked.
+
+**Problem:** ID kept at 20% deletion was 85.3% on val, against a 96.5% ceiling and a 91.7% target. We didn't know how much of that gap was re-association, the part more Python rules could still fix, and how much was something else.
+
+**How we found it:** an [oracle experiment](CONCEPTS.md#oracle-experiment-upper-bound), `--single-target`, off by default: when the only confirmed track is searching, it takes the nearest detection anywhere. Then every frame between the score and the ceiling went into one bucket. For the default, another ID holding the drone is 4.66 points and a searching track not getting it back is 3.53. The oracle takes both to zero. What's left with the oracle is jumps (2.80 points: the track was tracked last frame, misses the IoU match, and gets the drone back a frame later) and each clip's first track being confirmed (0.29). The first run crashed on a coasted box that had turned inside out, with no size left to measure distance in. A test now pins that down. See `docs/benchmarks/antiuav-single-target.md`.
+
+**What we did:** kept the option as a labeled diagnostic. Its numbers never count toward #28, and it won't be ported. On MOT17 its condition held on 0 of 5,316 frames, so it changed nothing there. To meet the target by re-association alone, a general rule would have to recover 79.9% of what an oracle that knows the answer recovers.
+
+**Lesson:** before spending more effort on a stage, cheat on it once and measure. The oracle sets the most that stage can give, and what it leaves behind points at the next problem. Here that's motion between frames, not re-finding the drone.
+
 ---
 
 ## What didn't work
@@ -239,5 +251,6 @@ Know these before someone asks.
 - **At 640, Tether is slightly behind ByteTrack** on HOTA (0.4) and IDF1 (0.3). The cause hasn't been found.
 - **Anti-UAV is short of its target.** ID kept at 20% deletion is 85.3% on val against a target of 95% of the reachable ceiling (96.5%, so 91.7%). The target is relative because even a perfect tracker with a 30-frame search could reach only 94.0% on test. The 5% allowance is carried over from the original target, not derived from anything measured. See `docs/benchmarks/antiuav-ceiling.md` (#33, #36).
 - **Sparse scenes can swap IDs.** With nobody else in view, a person who walks out can hand their ID to a same-size newcomer within about a second. The gate and merge reach far around a big box, and the cap only binds in a crowd. The size check catches some cases, and on MOT17 most risky pairs are mid-frame, not at the edge. Fixing it properly needs appearance re-ID (#37, `docs/benchmarks/edge-rule.md`).
+- **Most of the Anti-UAV gap is re-association, and closing it generally is hard.** An oracle that knows there's one drone reaches 93.3% at 20% deletion on val (an upper bound, not a result). A general rule would need 79.9% of that gain to hit the target. The 2.8 points even the oracle leaves are frames where the drone jumps away from a tracked track (#34, `docs/benchmarks/antiuav-single-target.md`).
 - **Anti-UAV tests the tracker, not the whole system.** Detections are the labeled boxes with deletions added, not a real detector's output.
 - **No speed claims yet.** Everything so far runs in Python on CPU ONNX Runtime. The C++, TensorRT and CUDA work, and its before-and-after numbers, hasn't been built yet.
