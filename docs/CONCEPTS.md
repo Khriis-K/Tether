@@ -274,7 +274,14 @@ The buffers between pipeline stages have a fixed maximum size. If a slow stage f
 ### Amdahl's law
 Speeding up one part of a job only helps in proportion to how much of the total time that part takes. If tracking is 5% of frame time, making it 10× faster saves at most about 4.5%.
 
-**In Tether:** this is why the spec reports the tracking-step speedup (expected to be large) and the whole-pipeline speedup (expected to be smaller, because the detector dominates) as separate numbers.
+**In Tether:** this is why the spec reports the tracking-step speedup (expected to be large) and the whole-pipeline speedup (expected to be smaller, because the detector dominates) as separate numbers. Measured: tracking is 10–25× faster in C++, but the whole pipeline only 1.08–1.20×, because the detector is the same ONNX Runtime call in both languages and takes 66–83% of a C++ frame. Python frame time over Python detect time gives the most C++ could ever win with that detector: 1.27–1.76× depending on the video, so the spec's 2× needs a faster detector (`docs/benchmarks/cpp-pipeline-speed.md`).
+
+### Dropped frames (webcam)
+A camera produces frames at its own fixed rate whether or not the program is ready. If the pipeline takes longer than one camera period per frame, the camera keeps capturing and some frames are never read: they're dropped. A live demo has to keep up or it stutters.
+
+**In Tether:** the C++ webcam source counts drops from the camera's own frame timestamps. A gap of about *k* periods since the last frame means *k* − 1 frames dropped, rounded so ordinary jitter doesn't count. Each timing-log line carries the count, and `tether-timing` totals it. On the laptop camera (30 FPS), the sequential C++ pipeline dropped 69 of 369 frames: its detect step alone (33.7 ms) is longer than the 33.3 ms period.
+
+**Gotcha:** wall-clock time can't see drops. The camera driver buffers a few frames, so a slow pipeline still gets a frame instantly on many reads, from the buffer, and looks fine until the buffer overflows. Then frames vanish in bursts (here, three at a time, about every 13 frames). Only the camera's timestamps show where the gaps are.
 
 ### Microbenchmark (timing one step alone)
 Timing a single piece of code in isolation, away from everything around it, so its own speed is all you measure. The usual rules: time only that code, run it several times and keep the median, and do exactly the same work on both sides of a comparison.
@@ -305,6 +312,13 @@ Libraries like NumPy and ONNX Runtime do their heavy work in compiled C/C++ unde
 Decimal math on computers is rounded, and the result can depend on the order of operations. Python (NumPy) and C++ can do the same math in a slightly different order and get answers that differ in the last few digits. Neither one is wrong.
 
 **In Tether:** that's why the Python-vs-C++ check requires *matching* outputs (same IDs and statuses, boxes within a tiny tolerance), not bit-identical ones. `tether-parity` checks this to 1e-6 px. On all 462 real detection files we have, the C++ port's boxes differ from Python's by at most 2.6e-9 px (`docs/benchmarks/cpp-tracking-speed.md`).
+
+### Bit-exact ports (matching NumPy's float32 math)
+Sometimes "within a tolerance" isn't good enough, and you want both languages to produce the very same bytes. Then the port has to copy not just the formula but the number types and the rounding rules.
+
+**In Tether:** the C++ frame prep and detector write detection files byte-identical to Python's (1000 Anti-UAV frames and 525 MOT17 frames, checked with `cmp`). Three details made that work. Python's `round()` rounds halves to even (2.5 → 2), so C++ uses `std::nearbyint`, not `std::round`. Scaling pixels to [0, 1] divides in float32, as NumPy does. And box decoding is done in float32 too. Under NumPy 2's rules, a float32 array combined with a plain Python number stays float32, so `(x1 - pad) / scale` rounds to float32 at every step. Doing it in double gave 337.66667683919275 where Python gives 337.6666564941406.
+
+**Gotcha:** both shortcuts pass every test that uses round numbers (scale 0.5, scale 1). Only a test with an awkward scale like 0.3, or a size that lands exactly on .5, catches them.
 
 ### Tie-breaking (why the port copies SciPy's solver)
 When two different answers are exactly as good, which one an algorithm returns depends on details like the order it scans its inputs. That's not a bug, but two implementations that both find "an optimal answer" can still disagree.

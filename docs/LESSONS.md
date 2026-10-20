@@ -21,18 +21,20 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 **Built (Python):**
 - The tracker: Kalman motion model, a five-stage matching cascade, a track lifecycle, ByteTrack's low-score pass, a capped search gate, and a duplicate-track merge.
 - The YOLO26n ONNX detector, which reads its input size from the model.
-- A webcam/video demo and per-step timing logs.
+- A webcam/video demo and per-step timing logs, with a `--headless` mode for timing comparisons.
 - A MOT17 evaluation through TrackEval, and a ByteTrack baseline on the same detections.
 - An Anti-UAV dropout simulator with its own scoring.
 - A single-target prior that knows there's one drone (`--single-target`), kept only as a diagnostic upper bound, never a default.
-- 258 automated tests.
+- 268 automated tests.
 
 **Built (C++):**
 - The same tracker and a `tether-track` CLI with the same options and file formats, built with CMake.
 - A committed match check, `tether-parity`, that runs both trackers on the same files and names the first differing frame and track. IDs and statuses match on every frame of all 462 real detection files we have: 7 MOT17 videos, plus 91 Anti-UAV test clips under 5 dropout conditions (`docs/benchmarks/cpp-tracking-speed.md`). `ctest` runs it on scripted scenes against every build.
-- 120 tests: every Python tracker behavior test, ported, plus tests that pin the assignment solver to SciPy's answers, plus the timing tool's tests. The tracker tests pass with MSVC on Windows and GCC on Linux.
+- The sequential pipeline, `tether-pipeline` (#11): a webcam or video file through one video-source interface, CPU frame prep behind a frame-prep interface, YOLO26 on ONNX Runtime behind a detector interface (model size n/s/m is a setting), then the tracker. It's headless for now. It writes the shared timing log and detection files, and on a webcam it counts the frames the camera dropped. Its detection files are byte-identical to the Python pipeline's.
+- `tether-pipeline-compare`, which times both whole pipelines on the same video (`docs/benchmarks/cpp-pipeline-speed.md`).
+- 167 tests: every Python tracker behavior test, ported, plus tests that pin the assignment solver to SciPy's answers, the timing tool's tests, and the pipeline's (frame prep, decoding, the loop, file formats, the CLI on a stand-in model). `ctest` also runs both Python-vs-C++ checks against every build. The tracker tests pass with MSVC on Windows and GCC on Linux; the pipeline has only been built on Windows.
 
-**Not built yet:** the C++ pipeline (video, detector, timing), TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. The only speed result so far is the **tracking step alone**; there's no whole-pipeline speed number. Talk about the rest as the plan, not as achievements.
+**Not built yet:** TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. Talk about these as the plan, not as achievements.
 
 ### Headline results
 
@@ -43,6 +45,7 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 | Fixing the matching order closed most of the gap | 1270 → 779 ID switches, 35.6 → 40.9 HOTA (1280×736) | Found by ablation, not by guessing. See [the story](#tether-made-470-more-id-switches-than-bytetrack-22-23). |
 | Higher input resolution, not a bigger model, fixed detection | Detector recall 33.7% → 54.6% across the 7 videos, at similar precision (85.4% → 84.3%) | A 3× bigger model at 640 still missed small people. |
 | The C++ tracking step is much faster than the Python one | 14.1× on MOT17 (2.52 → 0.18 ms per frame), 35.0× on Anti-UAV (0.172 → 0.0049 ms) | The tracking step alone, on one laptop CPU, median of 5 runs, outputs checked equal. Not the whole pipeline, where the detector dominates. See `docs/benchmarks/cpp-tracking-speed.md`. |
+| The whole C++ pipeline is only a little faster | 1.08–1.20× (Anti-UAV clip 22.0–23.3 → 25.1 FPS; MOT17-04 16.7 → 19.6 at 640, 8.6 → 10.4 at 1280×736) | Same ONNX Runtime CPU detector on both sides, 66–83% of a C++ frame, so the spec's 2× is out of reach until the detector gets faster. One laptop, one run per video. See `docs/benchmarks/cpp-pipeline-speed.md`. |
 | Recovers the drone after gaps far more often | Anti-UAV **test** (run once, at the end): ID kept at 20% deletion 26.1% → 84.0%; 1 s gaps recovered 27.2% → 88.9%. Val, which we tuned on: 85.3% and 88.8%. | Detections are the labeled boxes, so this tests the tracker, not the detector. Gap recovery meets its 80% target. ID kept doesn't: the target is 95% of the reachable ceiling, 89.3% on test, so it's 5.3 points short. See `docs/benchmarks/antiuav-dropout.md`. |
 
 ### Debugging playbook
@@ -243,6 +246,17 @@ See the [edge rule](CONCEPTS.md#edge-rule-tried-shelved) and `docs/benchmarks/ed
 
 **Lesson:** a check is only as good as the failures it can see. Test it with broken inputs (wrong IDs, NaNs, a dead timer) before trusting its "pass". And keep the speed claim to what was timed: one step, not the pipeline.
 
+### The C++ pipeline is barely faster, and that's the detector's doing (#11)
+**In two sentences:** the whole C++ pipeline (video, frame prep, ONNX Runtime detector, tracker) is only 1.08–1.20× faster than the Python one on the same videos, against 14–35× for the tracking step alone. Both run the same detector call, which takes 66–83% of each frame, so [Amdahl's law](CONCEPTS.md#amdahls-law) caps the gain no matter how good the C++ is.
+
+**Problem:** the spec wants the whole pipeline 2× faster in C++, and the pipeline had to be checked to do the same work as Python's before any speed number could mean anything.
+
+**How we found it:** `tether-pipeline-compare` runs `tether-demo --headless` and `tether-pipeline` on one video and splits the time by step. `detect` came out within 2% between the languages. C++ won only on decoding, frame prep and tracking. Python frame time over Python detect time gives the most C++ could ever win: 1.27–1.35× on the Anti-UAV clip, 1.76× on MOT17-04 at 640, 1.56× at 1280×736, all under 2×. To be sure both did the same work, the two pipelines' detection dumps were compared byte for byte, and they matched. That took a [bit-exact port](CONCEPTS.md#bit-exact-ports-matching-numpys-float32-math) of NumPy's float32 decode and Python's round-half-to-even letterbox sizes, each pinned by a test with an awkward number. On the webcam, the camera's frame timestamps showed [69 dropped frames](CONCEPTS.md#dropped-frames-webcam) in 300, which matched an independent count from elapsed time. Two setup bugs turned up along the way. The comparison tool first ran whichever `tether` package was installed rather than the checkout's, and an end-to-end test caught it. And the stand-in test models sat in a folder the repo's `data/` ignore rule silently hid.
+
+**What we did:** the pipeline modules behind narrow interfaces (video source, frame prep, detector), so TensorRT and CUDA prep can slot in later; OpenCV 5.0.0 and ONNX Runtime 1.31.0 pinned to the Python environment's versions; and a committed write-up, `docs/benchmarks/cpp-pipeline-speed.md`.
+
+**Lesson:** before porting for speed, compute the ceiling. One division (Python's frame time over its detect time, the part C++ can't speed up) shows 2× is out of reach with this detector, and it could have been done from the Python timing logs before writing any C++. And a speed comparison means little until both sides are shown to do the same work. Here that was a byte-for-byte diff of their outputs.
+
 ---
 
 ## What didn't work
@@ -281,5 +295,6 @@ Know these before someone asks.
 - **Sparse scenes can swap IDs.** With nobody else in view, a person who walks out can hand their ID to a same-size newcomer within about a second. The gate and merge reach far around a big box, and the cap only binds in a crowd. The size check catches some cases, and on MOT17 most risky pairs are mid-frame, not at the edge. Fixing it properly needs appearance re-ID (#37, `docs/benchmarks/edge-rule.md`).
 - **Most of the Anti-UAV gap is re-association, and closing it generally is hard.** An oracle that knows there's one drone reaches 93.3% at 20% deletion on val (an upper bound, not a result). A general rule would need 79.9% of that gain to hit the target. The 2.8 points even the oracle leaves are frames where the drone jumps away from a tracked track (#34, `docs/benchmarks/antiuav-single-target.md`).
 - **Anti-UAV tests the tracker, not the whole system.** Detections are the labeled boxes with deletions added, not a real detector's output.
-- **The only speed claim is the tracking step alone.** It's 14.1× (MOT17) and 35.0× (Anti-UAV) faster in C++, on one laptop CPU. Everything with a detector still runs in Python on CPU ONNX Runtime, and the C++ pipeline, TensorRT and CUDA work, and their before-and-after numbers, haven't been built yet. The whole-pipeline speedup will be much smaller, because the detector dominates. Why drones gain more than crowds hasn't been profiled.
+- **The big speedup is the tracking step alone.** It's 14.1× (MOT17) and 35.0× (Anti-UAV) faster in C++, on one laptop CPU. The whole pipeline is only 1.08–1.20× faster, because both languages run the same CPU ONNX Runtime detector and it dominates. Against the spec's 2× whole-pipeline target, even a C++ pipeline whose other steps were free would get 1.27–1.76×. TensorRT and CUDA prep haven't been built. Why drones gain more than crowds in tracking hasn't been profiled.
+- **The live webcam doesn't keep up yet.** The sequential C++ pipeline ran at 24.4 FPS against the laptop's 30 FPS camera and dropped 69 frames in 300 read. Its detect step alone is longer than a camera period. One run, one camera.
 - **Python–C++ parity is checked on the files we have.** All 462 real files match, with boxes within 2.6e-9 px, but a tie the two solvers break differently could still turn up on inputs we haven't run. `tether-parity` will show it at the first frame where it happens.

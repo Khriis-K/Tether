@@ -151,6 +151,7 @@ if(TETHER_BUILD_TESTS)
     tests/test_coast_damping.cpp
     tests/test_detector.cpp
     tests/test_formats.cpp
+    tests/test_frames_dropped.cpp
     tests/test_frame_prep.cpp
     tests/test_lifecycle.cpp
     tests/test_low_score.cpp
