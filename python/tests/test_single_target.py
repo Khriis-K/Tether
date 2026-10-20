@@ -102,6 +102,21 @@ def test_on_it_never_fires_while_another_track_is_tracked():
     assert holder(outputs[-1], other).status == "tracked"
 
 
+def test_on_a_tentative_track_does_not_block_it():
+    # A missed jump starts a tentative track on the drone; the searching track takes
+    # the drone back the next frame. Blocking on tentative tracks would block exactly that.
+    jumped, returned = box_at(X + FAR * SIZE), box_at(X + (FAR + 0.1) * SIZE)
+    seen = [det(box_at(X))]
+    frames = [seen for _ in range(CONFIRM + 2)] + [[det(jumped)], [det(returned)]]
+
+    outputs = run(frames)
+    assert holder(outputs[-1], returned).status == "tentative"
+
+    outputs = run(frames, single_target=True)
+    assert holder(outputs[-2], jumped).status == "tentative"
+    assert holder(outputs[-1], returned).id == a_id(outputs)
+
+
 def test_on_a_return_the_usual_stages_match_is_kept():
     returned = box_at(X + 0.1 * SIZE)  # overlaps the prediction: stage 1 takes it first
 

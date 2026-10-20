@@ -114,7 +114,7 @@ class _TrackState:
         self.hits += 1
         self.frames_since_seen = 0
         self.confirmed = self.confirmed or self.hits >= confirm_frames
-        self.path.append(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2))
+        self.path.append(_center(box))
 
     def take_over(self, other: "_TrackState") -> None:
         """Continue as `other`, which follows this track's object under a younger ID."""

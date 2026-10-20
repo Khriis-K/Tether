@@ -30,6 +30,11 @@ Test: test_on_a_return_the_usual_stages_match_is_kept
 Mutation: no guard for a track an earlier stage already matched.
 Result: VERIFIED
 
+### Criterion C3d: a tentative track doesn't block it (the missed detection's own tentative track would otherwise always block it)
+Test: test_on_a_tentative_track_does_not_block_it
+Mutation: any other track, tentative included, blocks the rule.
+Result: VERIFIED
+
 ### Criterion C4: it never fires when more than one track is searching
 Test: test_on_it_never_fires_with_two_searching_tracks
 Mutation: the one-confirmed-track check is dropped, so the first searching track gets an unlimited match whatever else is confirmed.
