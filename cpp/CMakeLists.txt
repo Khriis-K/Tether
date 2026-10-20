@@ -42,7 +42,7 @@ if(NOT EXISTS ${OPENCV_INSTALL}/done)
   endif()
   execute_process(
     COMMAND ${CMAKE_COMMAND} -S ${opencv_SOURCE_DIR} -B ${opencv_build} ${generator} -DCMAKE_BUILD_TYPE=Release
-      -DCMAKE_INSTALL_PREFIX=${OPENCV_INSTALL} -DBUILD_LIST=core,imgproc,imgcodecs,videoio
+      -DCMAKE_INSTALL_PREFIX=${OPENCV_INSTALL} -DBUILD_LIST=core,imgproc,imgcodecs,videoio,highgui
       -DBUILD_SHARED_LIBS=OFF -DBUILD_WITH_STATIC_CRT=OFF -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF
       -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF -DBUILD_JAVA=OFF -DBUILD_opencv_apps=OFF -DBUILD_opencv_python3=OFF
       -DWITH_CUDA=OFF -DWITH_PROTOBUF=OFF -DWITH_ADE=OFF
@@ -54,7 +54,7 @@ if(NOT EXISTS ${OPENCV_INSTALL}/done)
   file(TOUCH ${OPENCV_INSTALL}/done)
 endif()
 set(OpenCV_STATIC ON)
-find_package(OpenCV 5.0.0 EXACT REQUIRED COMPONENTS core imgproc imgcodecs videoio
+find_package(OpenCV 5.0.0 EXACT REQUIRED COMPONENTS core imgproc imgcodecs videoio highgui
   PATHS ${OPENCV_INSTALL} NO_DEFAULT_PATH)
 file(GLOB_RECURSE OPENCV_FFMPEG_PLUGIN ${OPENCV_INSTALL}/opencv_videoio_ffmpeg*_64.dll)
 
