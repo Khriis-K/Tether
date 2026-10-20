@@ -1,5 +1,6 @@
-// tether-pipeline: run YOLO26 + the tracker on a webcam or video file, headless.
-// The C++ counterpart of tether-demo (python/tether/demo.py), without the window.
+// tether-pipeline: run YOLO26 + the tracker on a webcam or video file, headless
+// unless asked to show the tracks in a window (--show) or record them (--record).
+// The C++ counterpart of tether-demo (python/tether/demo.py).
 #pragma once
 
 #include <filesystem>

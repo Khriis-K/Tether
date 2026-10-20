@@ -90,9 +90,10 @@ void trail(cv::Mat& img, const std::vector<Point>& path, const cv::Scalar& color
   cv::Rect frame(0, 0, img.cols, img.rows);
   for (size_t i = 1; i < path.size(); ++i) {
     cv::Point a = to_point(path[i - 1][0], path[i - 1][1]), b = to_point(path[i][0], path[i][1]);
-    cv::Rect area = cv::boundingRect(std::vector<cv::Point>{a, b});
-    area = cv::Rect(area.x - thickness, area.y - thickness, area.width + 2 * thickness, area.height + 2 * thickness) &
-           frame;
+    cv::Point margin(thickness + 1, thickness + 1);
+    cv::Rect area = cv::Rect(cv::Point(std::min(a.x, b.x), std::min(a.y, b.y)) - margin,
+                             cv::Point(std::max(a.x, b.x), std::max(a.y, b.y)) + margin) &
+                    frame;
     if (area.empty()) continue;
     cv::Mat under = img(area), over = under.clone();
     cv::line(over, a - area.tl(), b - area.tl(), color, thickness, cv::LINE_AA);

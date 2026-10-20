@@ -65,7 +65,7 @@ TEST(HudView, ShowsTheFrameWithTheTracksDrawnAndLeavesTheInputAlone) {
 }
 
 TEST(HudView, QOrEscStops) {
-  for (int key : {'q', 27}) {
+  for (int key : {int{'q'}, 27}) {
     FakeScreen screen({key});
     HudView view(&screen, nullptr);
     EXPECT_FALSE(view.show(frame(), tracks())) << key;

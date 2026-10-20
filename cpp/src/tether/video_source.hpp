@@ -21,6 +21,8 @@ class VideoSource {
   // but the pipeline never got, because it was busy. Empty for a file, which
   // can't drop frames, and for a camera that can't tell.
   virtual std::optional<int> dropped() const = 0;
+  // The rate the source plays at, in frames per second; 0 when it can't tell.
+  virtual double fps() const { return 0; }
 };
 
 // Frames a camera dropped between two frames it delivered `gap_ms` apart, at a

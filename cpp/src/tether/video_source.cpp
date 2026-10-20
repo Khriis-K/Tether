@@ -25,12 +25,15 @@ namespace {
 // A file (or image sequence) read with OpenCV.
 class FileSource : public VideoSource {
  public:
-  explicit FileSource(cv::VideoCapture capture) : capture_(std::move(capture)) {}
+  FileSource(cv::VideoCapture capture, bool sequence) : capture_(std::move(capture)), sequence_(sequence) {}
   bool read(cv::Mat& frame) override { return capture_.read(frame); }
   std::optional<int> dropped() const override { return std::nullopt; }
+  // An image sequence has no rate of its own (FFmpeg makes up 25), so it can't tell.
+  double fps() const override { return sequence_ ? 0 : std::max(0.0, capture_.get(cv::CAP_PROP_FPS)); }
 
  private:
   cv::VideoCapture capture_;
+  bool sequence_;
 };
 
 // A webcam read with OpenCV. Counts drops from the gaps between the camera's own
@@ -45,6 +48,7 @@ class CameraSource : public VideoSource {
     return true;
   }
   std::optional<int> dropped() const override { return dropped_; }
+  double fps() const override { return std::max(0.0, capture_.get(cv::CAP_PROP_FPS)); }
 
  private:
   static double period_ms(double fps) { return fps > 0 ? 1000.0 / fps : 0.0; }
@@ -67,7 +71,7 @@ std::unique_ptr<VideoSource> open_video_source(const std::string& source) {
     capture.open(source);
   if (!capture.isOpened()) throw std::runtime_error("can't open video source '" + source + "'");
   if (webcam) return std::make_unique<CameraSource>(std::move(capture));
-  return std::make_unique<FileSource>(std::move(capture));
+  return std::make_unique<FileSource>(std::move(capture), source.find('%') != std::string::npos);
 }
 
 }  // namespace tether

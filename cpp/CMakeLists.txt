@@ -102,13 +102,15 @@ target_link_libraries(tether_core PRIVATE nlohmann_json::nlohmann_json)
 add_library(tether_pipeline
   src/tether/detector.cpp
   src/tether/frame_prep.cpp
+  src/tether/hud.cpp
+  src/tether/hud_view.cpp
   src/tether/pipeline.cpp
   src/tether/pipeline_cli.cpp
   src/tether/video_source.cpp
 )
 target_include_directories(tether_pipeline PUBLIC src)
 target_link_libraries(tether_pipeline
-  PUBLIC tether_core opencv_core opencv_imgproc opencv_videoio
+  PUBLIC tether_core opencv_core opencv_imgproc opencv_videoio opencv_highgui
   PRIVATE onnxruntime)
 
 # Copies a target's runtime DLLs (ONNX Runtime, OpenCV's FFmpeg plugin) next to
@@ -154,18 +156,22 @@ if(TETHER_BUILD_TESTS)
     tests/test_formats.cpp
     tests/test_frames_dropped.cpp
     tests/test_frame_prep.cpp
+    tests/test_hud.cpp
+    tests/test_hud_view.cpp
     tests/test_lifecycle.cpp
     tests/test_low_score.cpp
     tests/test_matching.cpp
     tests/test_merge.cpp
     tests/test_pipeline.cpp
     tests/test_pipeline_cli.cpp
+    tests/test_pipeline_cli_hud.cpp
     tests/test_pipeline_cli_outputs.cpp
     tests/test_search_gate.cpp
     tests/test_stream_writers.cpp
     tests/test_timing.cpp
     tests/test_tracker.cpp
     tests/test_video_source.cpp
+    tests/test_video_source_fps.cpp
   )
   target_link_libraries(tether_tests PRIVATE tether_core tether_pipeline opencv_imgcodecs
     nlohmann_json::nlohmann_json GTest::gtest_main)
