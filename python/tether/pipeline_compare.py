@@ -18,16 +18,8 @@ from pathlib import Path
 
 from tether.demo import DEFAULT_MODEL
 from tether.formats import STEPS, load_timings
+from tether.parity import DEFAULT_CPP_DIR, REPO, cpp_binary
 from tether.timing import summarize
-
-REPO = Path(__file__).resolve().parents[2]
-DEFAULT_CPP_DIR = REPO / "cpp" / "build"
-
-
-def cpp_binary(cpp_dir: Path) -> Path | None:
-    """tether-pipeline in `cpp_dir` (or its Release folder, for Visual Studio builds), if built."""
-    candidates = [Path(cpp_dir) / sub / f"tether-pipeline{ext}" for sub in ("Release", ".") for ext in (".exe", "")]
-    return next((c for c in candidates if c.is_file()), None)
 
 
 def _run(command: list, name: str, env: dict | None = None) -> None:
@@ -45,7 +37,7 @@ def run_python(video: str, model: str, log: Path) -> None:
 
 
 def run_cpp(cpp_dir: Path, video: str, model: str, log: Path) -> None:
-    binary = cpp_binary(cpp_dir)
+    binary = cpp_binary(cpp_dir, "tether-pipeline")
     if binary is None:
         raise SystemExit(f"tether-pipeline-compare: error: no tether-pipeline in {cpp_dir}; "
                          "build it with cpp/build.sh Release")

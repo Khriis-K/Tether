@@ -69,6 +69,7 @@ std::pair<int, int> OnnxDetector::input_size() const { return session_->input_si
 
 std::vector<Detection> OnnxDetector::detect(const PreparedFrame& prepared) {
   std::array<int64_t, 4> shape = {1, 3, prepared.height, prepared.width};
+  // ONNX Runtime wants a mutable pointer but only reads an input tensor.
   auto input = Ort::Value::CreateTensor<float>(session_->memory, const_cast<float*>(prepared.blob.data()),
                                                prepared.blob.size(), shape.data(), shape.size());
   const char* input_name = session_->input_name.c_str();

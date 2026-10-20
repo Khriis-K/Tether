@@ -112,6 +112,18 @@ std::array<double, N> to_array(const nlohmann::json& j) {
   return out;
 }
 
+std::ofstream open_for_writing(const std::filesystem::path& path) {
+  std::ofstream f(path, std::ios::binary);  // binary, so "\n" stays "\n" on Windows
+  if (!f) throw std::runtime_error(path.string() + ": can't open for writing");
+  return f;
+}
+
+void write_line(std::ofstream& f, const std::filesystem::path& path, const std::string& line) {
+  f << line << '\n';
+  f.flush();
+  if (!f) throw std::runtime_error(path.string() + ": write failed");
+}
+
 }  // namespace
 
 void save_detections(const std::filesystem::path& path, const DetectionFrames& frames) {
@@ -149,25 +161,6 @@ TrackFrames load_tracks(const std::filesystem::path& path) {
   return frames;
 }
 
-namespace {
-
-
-std::ofstream open_for_writing(const std::filesystem::path& path) {
-  std::ofstream f(path, std::ios::binary);  // binary, so "\n" stays "\n" on Windows
-  if (!f) throw std::runtime_error(path.string() + ": can't open for writing");
-  return f;
-}
-
-void write_line(std::ofstream& f, const std::filesystem::path& path, const std::string& line) {
-  f << line << '\n';
-  f.flush();
-  if (!f) throw std::runtime_error(path.string() + ": write failed");
-}
-
-std::string span_json(const Span& s) { return numbers(s); }
-
-}  // namespace
-
 DetectionWriter::DetectionWriter(const std::filesystem::path& path) : path_(path), file_(open_for_writing(path)) {}
 
 void DetectionWriter::write(const std::vector<Detection>& detections) {
@@ -180,9 +173,9 @@ TimingLogWriter::TimingLogWriter(const std::filesystem::path& path) : path_(path
 
 void TimingLogWriter::write(const StepTimes& t) {
   std::string line = "{\"frame\": " + std::to_string(frame_++) + ", \"steps\": {\"capture\": " +
-                     span_json(t.capture) + ", \"prep\": " + span_json(t.prep) + ", \"detect\": " +
-                     span_json(t.detect) + ", \"track\": " + span_json(t.track) + ", \"draw\": " +
-                     span_json(t.draw) + "}";
+                     numbers(t.capture) + ", \"prep\": " + numbers(t.prep) + ", \"detect\": " +
+                     numbers(t.detect) + ", \"track\": " + numbers(t.track) + ", \"draw\": " +
+                     numbers(t.draw) + "}";
   if (t.dropped) line += ", \"dropped\": " + std::to_string(*t.dropped);
   write_line(file_, path_, line + "}");
 }

@@ -30,6 +30,7 @@ One survives, and is left that way:
 | | negative counts allowed | `FramesDropped.AGapShorterThanHalfAPeriodIsNoneNotNegative` (added) |
 | | a file reports 0 drops instead of none | `VideoSource.AFileNeverReportsDroppedFrames`, `PipelineCli.TrackingWritesATimingLineForEveryFrame` |
 | | the loop doesn't pass the count on | `RunSequential.EachFrameCarriesTheSourcesDroppedCount` |
+| | a camera with no frame rate or timestamps reads as 0 drops | `DropCounter.UnknownWhenTheCameraReportsNoFrameRate`, `DropCounter.UnknownWhenTheCameraGivesNoTimestamps` (added after code review; written test-first) |
 | | `"dropped"` written on every line | `TimingLogWriter.WritesOneLinePerFrameWithEveryStepInTheSharedFormat` |
 | | `tether-timing` leaves out the total | `test_the_summary_of_a_webcam_run_includes_its_dropped_frames` |
 | | a file run's total is 0, not absent | `test_a_file_run_has_no_dropped_count` |
@@ -50,6 +51,6 @@ One survives, and is left that way:
 
 ## Checked by hand, not by tests
 
-- **Webcam mode** (`tether-pipeline 0`): the laptop camera through MSMF, 300 frames. The drop count (69) matched an independent estimate from elapsed time (12,257 ms ÷ 33.3 ms ≈ 368.7 periods → 69 missing).
+- **Webcam mode** (`tether-pipeline 0`): the laptop camera through MSMF, 300 frames. The drop count (69) matched an independent estimate from elapsed time (12,257 ms ÷ 33.33 ms ≈ 367.7 periods, about 368 frames captured, 300 read → 69 missing). Rechecked after code review moved the counting into `DropCounter`: 150 frames, 33 counted, 33 expected.
 - **File mode is uncapped**: neither source sleeps. A 20 FPS clip ran at 25.1 FPS, faster than its own frame rate.
 - **Same work as Python**: detection dumps from both pipelines are byte-identical on 1,525 real frames (`docs/benchmarks/cpp-pipeline-speed.md`).

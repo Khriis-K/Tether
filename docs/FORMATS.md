@@ -69,7 +69,7 @@ Times are `[start, end]` in milliseconds from a monotonic clock (Python's `time.
 | `track` | One tracker update. |
 | `draw` | Drawing the overlay and putting the frame on screen. In Python this includes `cv2.waitKey(1)`, which is where OpenCV actually paints the window, and on Windows it can take a few ms. Headless runs (`tether-pipeline`, `tether-demo --headless`) draw nothing, so it takes about 0 ms. |
 
-A webcam run of the C++ pipeline also gives each line `"dropped"`: how many frames the camera captured just before this one that the pipeline never got, because it was still busy. It's counted from the camera's own frame timestamps: a gap of about *k* frame periods since the previous frame means *k* − 1 dropped. Video-file runs and the Python pipeline leave it out.
+A webcam run of the C++ pipeline also gives each line `"dropped"`: how many frames the camera captured just before this one that the pipeline never got, because it was still busy. It's counted from the camera's own frame timestamps: a gap of about *k* frame periods since the previous frame means *k* − 1 dropped. Video-file runs, cameras that report no frame rate or timestamps (so drops can't be counted), and the Python pipeline leave it out.
 
 ```json
 {"frame": 7, "steps": {"capture": [0.0, 2.1], "prep": [2.1, 3.4], "detect": [3.4, 21.0], "track": [21.0, 21.3], "draw": [21.3, 21.3]}, "dropped": 2}

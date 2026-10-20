@@ -108,10 +108,15 @@ def time_python(frames: list[list[Detection]], repeats: int) -> list[float]:
     return times
 
 
-def _run_cpp(cpp_dir: Path, name: str, *args) -> str:
-    """Run a C++ binary from `cpp_dir` (or its Release folder, for Visual Studio builds); returns its output."""
+def cpp_binary(cpp_dir: Path, name: str) -> Path | None:
+    """A C++ program in `cpp_dir` (or its Release folder, for Visual Studio builds), if it's built."""
     candidates = [Path(cpp_dir) / sub / f"{name}{ext}" for sub in ("Release", ".") for ext in (".exe", "")]
-    binary = next((c for c in candidates if c.is_file()), None)
+    return next((c for c in candidates if c.is_file()), None)
+
+
+def _run_cpp(cpp_dir: Path, name: str, *args) -> str:
+    """Run a C++ binary from `cpp_dir`; returns its output."""
+    binary = cpp_binary(cpp_dir, name)
     if binary is None:
         raise SystemExit(f"tether-parity: error: no {name} in {cpp_dir}; build it with cpp/build.sh Release")
     done = subprocess.run([binary, *args], capture_output=True, text=True)

@@ -150,6 +150,7 @@ if(TETHER_BUILD_TESTS)
     tests/test_cli.cpp
     tests/test_coast_damping.cpp
     tests/test_detector.cpp
+    tests/test_drop_counter.cpp
     tests/test_formats.cpp
     tests/test_frames_dropped.cpp
     tests/test_frame_prep.cpp
@@ -159,6 +160,7 @@ if(TETHER_BUILD_TESTS)
     tests/test_merge.cpp
     tests/test_pipeline.cpp
     tests/test_pipeline_cli.cpp
+    tests/test_pipeline_cli_outputs.cpp
     tests/test_search_gate.cpp
     tests/test_stream_writers.cpp
     tests/test_timing.cpp

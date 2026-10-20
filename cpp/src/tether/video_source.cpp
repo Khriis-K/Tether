@@ -5,12 +5,19 @@
 #include <cmath>
 #include <opencv2/videoio.hpp>
 #include <stdexcept>
+#include <utility>
 
 namespace tether {
 
 int frames_dropped(double gap_ms, double period_ms) {
   if (gap_ms <= 0 || period_ms <= 0) return 0;
   return std::max(0, static_cast<int>(std::lround(gap_ms / period_ms)) - 1);
+}
+
+std::optional<int> DropCounter::add(double stamp_ms) {
+  if (period_ms_ <= 0 || stamp_ms <= 0) return std::nullopt;
+  std::optional<double> last = std::exchange(last_stamp_, stamp_ms);
+  return last ? frames_dropped(stamp_ms - *last, period_ms_) : 0;
 }
 
 namespace {
@@ -30,24 +37,21 @@ class FileSource : public VideoSource {
 // frame timestamps, so they show even when the driver buffers frames.
 class CameraSource : public VideoSource {
  public:
-  explicit CameraSource(cv::VideoCapture capture) : capture_(std::move(capture)) {
-    double fps = capture_.get(cv::CAP_PROP_FPS);
-    period_ms_ = fps > 0 ? 1000.0 / fps : 0.0;
-  }
+  explicit CameraSource(cv::VideoCapture capture)
+      : capture_(std::move(capture)), drops_(period_ms(capture_.get(cv::CAP_PROP_FPS))) {}
   bool read(cv::Mat& frame) override {
     if (!capture_.read(frame)) return false;
-    double stamp = capture_.get(cv::CAP_PROP_POS_MSEC);
-    dropped_ = last_stamp_ ? frames_dropped(stamp - *last_stamp_, period_ms_) : 0;
-    last_stamp_ = stamp;
+    dropped_ = drops_.add(capture_.get(cv::CAP_PROP_POS_MSEC));
     return true;
   }
   std::optional<int> dropped() const override { return dropped_; }
 
  private:
+  static double period_ms(double fps) { return fps > 0 ? 1000.0 / fps : 0.0; }
+
   cv::VideoCapture capture_;
-  double period_ms_;
-  std::optional<double> last_stamp_;
-  int dropped_ = 0;
+  DropCounter drops_;
+  std::optional<int> dropped_;
 };
 
 }  // namespace

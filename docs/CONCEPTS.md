@@ -279,7 +279,7 @@ Speeding up one part of a job only helps in proportion to how much of the total 
 ### Dropped frames (webcam)
 A camera produces frames at its own fixed rate whether or not the program is ready. If the pipeline takes longer than one camera period per frame, the camera keeps capturing and some frames are never read: they're dropped. A live demo has to keep up or it stutters.
 
-**In Tether:** the C++ webcam source counts drops from the camera's own frame timestamps. A gap of about *k* periods since the last frame means *k* − 1 frames dropped, rounded so ordinary jitter doesn't count. Each timing-log line carries the count, and `tether-timing` totals it. On the laptop camera (30 FPS), the sequential C++ pipeline dropped 69 of 369 frames: its detect step alone (33.7 ms) is longer than the 33.3 ms period.
+**In Tether:** the C++ webcam source counts drops from the camera's own frame timestamps. A gap of about *k* periods since the last frame means *k* − 1 frames dropped, rounded so ordinary jitter doesn't count. Each timing-log line carries the count, and `tether-timing` totals it. A camera that reports no frame rate or timestamps gets no count at all, rather than a misleading 0. On the laptop camera (30 FPS), the sequential C++ pipeline read 300 frames and the camera dropped 69 more: its detect step alone (33.7 ms) is longer than the 33.3 ms period.
 
 **Gotcha:** wall-clock time can't see drops. The camera driver buffers a few frames, so a slow pipeline still gets a frame instantly on many reads, from the buffer, and looks fine until the buffer overflows. Then frames vanish in bursts (here, three at a time, about every 13 frames). Only the camera's timestamps show where the gaps are.
 

@@ -30,7 +30,9 @@ void on_interrupt(int) { interrupted = 1; }
 class InterruptGuard {
  public:
   InterruptGuard() : previous_(std::signal(SIGINT, on_interrupt)) { interrupted = 0; }
-  ~InterruptGuard() { std::signal(SIGINT, previous_); }
+  ~InterruptGuard() {
+    if (previous_ != SIG_ERR) std::signal(SIGINT, previous_);
+  }
 
  private:
   void (*previous_)(int);
@@ -92,7 +94,7 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
                    [&](const std::string& v) { o.model = v; }}},
       {"--model-size", {"SIZE", "n, s or m: runs models/yolo26<SIZE>.onnx (default n)",
                         [&](const std::string& v) {
-                          model_for_size(v);
+                          model_for_size(v);  // throws on anything but n, s or m
                           o.model_size = v;
                         }}},
       {"--dump", {"DETECTIONS", "write a detection file (.jsonl) instead of tracking",
@@ -159,7 +161,11 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     long long frames = 0;
     auto more = [&] { return !interrupted && (o.max_frames == 0 || frames < o.max_frames); };
 
+    auto make_parent = [](const std::filesystem::path& p) {
+      if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path());
+    };
     if (o.dump) {
+      make_parent(*o.dump);
       DetectionWriter writer(*o.dump);
       dump_detections(*source, prep, detector, [&](const std::vector<Detection>& d) {
         writer.write(d);
@@ -170,11 +176,12 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     }
 
     std::filesystem::path log_path = o.timing ? *o.timing : default_timing_log();
-    if (log_path.has_parent_path()) std::filesystem::create_directories(log_path.parent_path());
+    make_parent(log_path);
     TimingLogWriter log(log_path);
     out << "logging timing to " << log_path.string() << "\n";
     Tracker tracker;
-    std::optional<long long> dropped;
+    std::optional<int> dropped;  // stays empty when the source can't count drops
+    // The draw step, with nothing to draw: it only says whether to go on.
     auto headless = [&](const cv::Mat&, const std::vector<Track>&) {
       ++frames;
       return more();
