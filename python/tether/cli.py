@@ -3,8 +3,9 @@
 import argparse
 
 from tether.formats import load_detections, save_tracks
-from tether.tracker import (COAST_DAMPING, CONFIRM_FRAMES, MAX_MISSING_FRAMES, MIN_SCORE,
-                            SEARCH_GATE, SEARCH_GATE_CAP, SEARCH_GATE_GROWTH, Tracker)
+from tether.tracker import (COAST_DAMPING, CONFIRM_FRAMES, MAX_MISSING_FRAMES, MERGE_REACH,
+                            MERGE_REACH_GROWTH, MIN_SCORE, SEARCH_GATE, SEARCH_GATE_CAP,
+                            SEARCH_GATE_GROWTH, Tracker)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,6 +34,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--coast-damping", type=float, default=COAST_DAMPING,
                         help="velocity is multiplied by this each frame a track goes unmatched; "
                              f"1 is undamped, 0 holds the position still (default {COAST_DAMPING})")
+    parser.add_argument("--merge-reach", type=float, default=MERGE_REACH,
+                        help="how far, in box sizes, a newly confirmed track can be from an older "
+                             "track's prediction and still be merged into it as a duplicate; this and "
+                             f"--merge-reach-growth both 0 turns merging off (default {MERGE_REACH})")
+    parser.add_argument("--merge-reach-growth", type=float, default=MERGE_REACH_GROWTH,
+                        help="added to the merge reach per frame the older track has missed "
+                             f"(default {MERGE_REACH_GROWTH})")
     args = parser.parse_args(argv)
 
     tracker = Tracker(confirm_frames=args.confirm_frames,
@@ -41,7 +49,9 @@ def main(argv: list[str] | None = None) -> int:
                       search_gate=args.search_gate,
                       search_gate_growth=args.search_gate_growth,
                       search_gate_cap=args.search_gate_cap,
-                      coast_damping=args.coast_damping)
+                      coast_damping=args.coast_damping,
+                      merge_reach=args.merge_reach,
+                      merge_reach_growth=args.merge_reach_growth)
     save_tracks(args.tracks, [tracker.update(dets) for dets in load_detections(args.detections)])
     return 0
 

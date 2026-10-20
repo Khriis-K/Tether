@@ -29,6 +29,18 @@ track is predicted to be this frame, in this order:
    against the high detections still unmatched, so objects that are already fast when
    they appear keep their ID.
 
+Merging duplicates: when the detection a track missed is too far for the gate,
+it starts a tentative track, and once that is confirmed the object holds two
+IDs. So when a tentative track is confirmed, an older confirmed track that
+missed this frame takes it over if it is the same size (SEARCH_GATE_MAX_SIZE_RATIO,
+against its last observed box) and its prediction is within its merge reach,
+`merge_reach + merge_reach_growth * frames_since_seen` box sizes, capped the same
+way as the gate. The older track keeps its ID and takes the new track's state;
+the new ID is dropped. On Anti-UAV almost every lost ID was such a duplicate, and
+the reach is far wider than the gate because the drone often reappears 5-10 box
+sizes from where it was predicted; in a crowd the cap keeps it from reaching a
+neighbor (docs/benchmarks/antiuav-duplicates.md).
+
 Detections scored at least `min_score` are high; those above LOW_SCORE but below
 `min_score` are low, and only ever used in stage 2, so they never start a track;
 the rest are dropped. Detection files can be saved unfiltered and each tracker
@@ -70,6 +82,10 @@ SEARCH_GATE_GROWTH = 0.25  # added per missed frame
 SEARCH_GATE_CAP = 0.5  # the issue's untuned starting point: two tracks' gates can't overlap
 # A gate match's detection is at most this many times taller or shorter than the track's last box.
 SEARCH_GATE_MAX_SIZE_RATIO = 1.5
+# Merge reach for a duplicate, in box sizes; both 0 turns merging off. Tuned on Anti-UAV val, checked
+# on MOT17 (docs/benchmarks/antiuav-duplicates.md).
+MERGE_REACH = 10.0  # after one missed frame the reach is MERGE_REACH + MERGE_REACH_GROWTH
+MERGE_REACH_GROWTH = 1.0  # added per missed frame
 # Velocity is multiplied by this each frame a track goes unmatched; 1 is undamped, 0 holds still.
 COAST_DAMPING = 1.0
 
@@ -91,6 +107,12 @@ class _TrackState:
         self.frames_since_seen = 0
         self.confirmed = self.confirmed or self.hits >= confirm_frames
         self.path.append(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2))
+
+    def take_over(self, other: "_TrackState") -> None:
+        """Continue as `other`, which follows this track's object under a younger ID."""
+        self.motion = other.motion
+        self.hits += other.hits
+        self.path.extend(other.path)
 
     @property
     def status(self) -> str:
@@ -116,7 +138,8 @@ class Tracker:
                  min_score: float = MIN_SCORE, search_gate: float = SEARCH_GATE,
                  search_gate_growth: float = SEARCH_GATE_GROWTH,
                  search_gate_cap: float = SEARCH_GATE_CAP,
-                 coast_damping: float = COAST_DAMPING) -> None:
+                 coast_damping: float = COAST_DAMPING, merge_reach: float = MERGE_REACH,
+                 merge_reach_growth: float = MERGE_REACH_GROWTH) -> None:
         self._confirm_frames = confirm_frames
         self._max_missing_frames = max_missing_frames
         self._min_score = min_score
@@ -124,6 +147,8 @@ class Tracker:
         self._search_gate_growth = search_gate_growth
         self._search_gate_cap = search_gate_cap
         self._coast_damping = coast_damping
+        self._merge_reach = merge_reach
+        self._merge_reach_growth = merge_reach_growth
         self._tracks: list[_TrackState] = []
         self._next_id = 1
 
@@ -148,6 +173,7 @@ class Tracker:
                                        high_allowed, pairs)
         pairs += self._match_unmatched(lambda t: t.hits == 1, _by_one_hit_distance, detections,
                                        high_allowed, pairs)
+        pairs = self._merge_duplicates(pairs, detections)
 
         survivors = []
         for ti, di in pairs:
@@ -181,13 +207,52 @@ class Tracker:
         # frames_since_seen still counts up to the last frame: this one isn't decided yet.
         return self._search_gate + self._search_gate_growth * track.frames_since_seen
 
+    def _reach(self, track: _TrackState) -> float:
+        # Counted the same way as the gate's.
+        return self._merge_reach + self._merge_reach_growth * track.frames_since_seen
+
     def _capped_gate(self, track: _TrackState) -> float:
+        return self._capped(track, self._gate(track))
+
+    def _capped(self, track: _TrackState, distance: float) -> float:
+        """`distance`, at most search_gate_cap times the distance to the nearest other confirmed track."""
         if self._search_gate_cap == math.inf:  # no cap: skip the scan over every track
-            return self._gate(track)
+            return distance
         nearest = min((center_distance(track.motion.box, other.motion.box)
                        for other in self._tracks if other is not track and other.confirmed),
                       default=math.inf)
-        return min(self._gate(track), self._search_gate_cap * nearest)
+        return min(distance, self._search_gate_cap * nearest)
+
+    def _merge_duplicates(self, pairs: list[tuple[int, int]],
+                          detections: list[Detection]) -> list[tuple[int, int]]:
+        """Hand each pair that would confirm a tentative track to an older track it duplicates.
+
+        Runs before any pair is applied, so every box is still this frame's
+        prediction and the tentative tracks don't count toward the cap. The
+        older ID survives without comparing ages: a tentative track is dropped
+        on its first miss, so it is younger than any track that has already
+        been confirmed and then missed. With confirm_frames 1 a track is born
+        confirmed, so nothing is ever merged.
+        """
+        unmatched = set(range(len(self._tracks))) - {ti for ti, _ in pairs}
+        merged = []
+        for ti, di in pairs:
+            new, box = self._tracks[ti], detections[di].box
+            if not new.confirmed and new.hits + 1 >= self._confirm_frames:
+                reachable = [(center_distance(self._tracks[oi].motion.box, box), oi) for oi in unmatched
+                             if self._is_duplicate_of(self._tracks[oi], new.cls, box)]
+                if reachable:
+                    _, oi = min(reachable)
+                    unmatched.remove(oi)
+                    self._tracks[oi].take_over(new)
+                    ti = oi
+            merged.append((ti, di))
+        return merged
+
+    def _is_duplicate_of(self, old: _TrackState, cls: int, box: Box) -> bool:
+        """Whether a new track confirmed on `box` is `old`'s object under a younger ID."""
+        return (old.confirmed and old.cls == cls and _same_size(old.box, box)
+                and center_distance(old.motion.box, box) <= self._capped(old, self._reach(old)))
 
     def _by_search_gate(self, tracks: list[_TrackState], boxes: list[Box],
                         allowed: np.ndarray) -> list[tuple[int, int]]:
