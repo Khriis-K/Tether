@@ -6,6 +6,8 @@ The change: a searching track's gate (`search_gate + search_gate_growth · frame
 
 Tentative tracks don't count toward the cap. The failure the gate fixes on Anti-UAV is a track missing one jump: the detection starts a tentative track there, and the gate has to take the detection back from it. Measuring the cap to that tentative track would shut the gate exactly when it's needed.
 
+**Update (#36): the tracker's duplicate IDs of the drone are now merged, which takes the cap's Anti-UAV bind rate from about a third to 0.6% and ID kept at 20% deletion to 85.3%; see [antiuav-duplicates.md](antiuav-duplicates.md).**
+
 **Result: the gate is now on by default, at 1.5 + 0.25/frame with cap 0.5 and the size check, and damping stays off (1.0).** It leaves MOT17 above the committed numbers at both input sizes, with no video more than 0.15 HOTA below its committed score, while keeping almost all of the #29 gain on Anti-UAV. The gate itself (1.5 + 0.25) was not re-tuned with the cap on; it is #29's Anti-UAV best.
 
 ## Which branch of the issue applied

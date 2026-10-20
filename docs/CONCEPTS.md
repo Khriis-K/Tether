@@ -115,7 +115,14 @@ A fixed gate can't be right for both a lone object and a crowd. Capping it at a 
 
 **In Tether:** `--search-gate-cap`, 0.5 by default, measured to other *confirmed* tracks only. It takes the gate's MOT17 cost from about 500 extra ID switches to none, and costs Anti-UAV about 1 point of ID kept.
 
-**Gotcha:** "alone" means alone among the tracker's tracks, not alone in the world. On Anti-UAV there is one drone, yet the cap binds in about 30% of gate checks, because the tracker's own duplicate IDs of the drone sit nearby.
+**Gotcha:** "alone" means alone among the tracker's tracks, not alone in the world. On Anti-UAV there is one drone, yet the cap bound in about 30% of gate checks, because the tracker's own duplicate IDs of the drone sat nearby. Merging the duplicates (below) took that to 0.6%.
+
+### Duplicate-track merge
+When a lost object reappears too far from its track's prediction for the gate, its detection starts a new track, and three frames later the object holds two IDs. A merge folds the new track back into the old one at the moment it is confirmed, if the old one is searching, the same size, and close enough. The older ID survives.
+
+**In Tether:** `--merge-reach` / `--merge-reach-growth`, 10 + 1 box sizes per missed frame by default, capped like the gate. On Anti-UAV val it lifts ID kept at 20% deletion from 59.9% to about 85%, and MOT17 doesn't move: in a crowd the cap holds the reach down to a fraction of the distance to the nearest neighbor.
+
+**Gotcha:** the reach is far wider than the gate, because the drone often reappears 5–10 box sizes from its prediction. That is safe in a crowd (the cap) and on a single-target benchmark (nothing to get wrong), but not tested in between: in a sparse scene, a lone person who leaves can hand their ID to a same-size newcomer 10 heights away right after, and up to 40 heights away 30 frames later.
 
 **Gotcha:** center distance ignores size. A big box walking in front of a smaller, occluded track can have its center inside that track's gate, which IoU would never allow. Tether's gate also requires the heights to be within 1.5 times of each other, against the track's last *observed* box: a coasted prediction's size drifts with the size velocity (MOT17-09 had predictions 1211 px tall, and one with negative height).
 
