@@ -3,6 +3,7 @@
 #include <exception>
 #include <functional>
 #include <map>
+#include <sstream>
 #include <stdexcept>
 
 #include "tether/formats.hpp"
@@ -40,10 +41,9 @@ std::string usage() {
 int run_track_cli(const std::vector<std::string>& args, std::ostream& out, std::ostream& err) {
   TrackerSettings s;
   auto num = [](double v) {
-    std::string text = std::to_string(v);
-    text.erase(text.find_last_not_of('0') + 1);
-    if (text.back() == '.') text += '0';
-    return text;
+    std::ostringstream text;  // default stream formatting: 0.25, 1, 10
+    text << v;
+    return text.str();
   };
   std::map<std::string, Option> options = {
       {"--confirm-frames",
@@ -93,23 +93,31 @@ int run_track_cli(const std::vector<std::string>& args, std::ostream& out, std::
       for (const auto& [name, option] : options) out << "  " << name << " VALUE\n      " << option.help << "\n";
       return 0;
     }
-    if (arg.rfind("--", 0) != 0) {
+    if (arg.empty() || arg[0] != '-') {
       paths.push_back(arg);
       continue;
     }
-    auto it = options.find(arg);
+    // "--name value" or "--name=value".
+    auto eq = arg.find('=');
+    auto name = arg.substr(0, eq);
+    auto it = options.find(name);
     if (it == options.end()) {
       err << usage() << "tether-track: error: unrecognized argument " << arg << "\n";
       return 2;
     }
-    if (i + 1 >= args.size()) {
-      err << usage() << "tether-track: error: " << arg << " needs a value\n";
+    std::string value;
+    if (eq != std::string::npos) {
+      value = arg.substr(eq + 1);
+    } else if (i + 1 < args.size()) {
+      value = args[++i];
+    } else {
+      err << usage() << "tether-track: error: " << name << " needs a value\n";
       return 2;
     }
     try {
-      it->second.set(args[++i]);
+      it->second.set(value);
     } catch (const std::exception&) {  // invalid_argument or out_of_range
-      err << usage() << "tether-track: error: " << arg << ": invalid value '" << args[i] << "'\n";
+      err << usage() << "tether-track: error: " << name << ": invalid value '" << value << "'\n";
       return 2;
     }
   }

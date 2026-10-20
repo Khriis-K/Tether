@@ -21,6 +21,12 @@ constexpr double INF = std::numeric_limits<double>::infinity();
 
 Point center(const Box& b) { return {(b[0] + b[2]) / 2, (b[1] + b[3]) / 2}; }
 
+// Appends to a trail, keeping only the last PATH_LENGTH points.
+void push_capped(std::deque<Point>& path, const Point& p) {
+  path.push_back(p);
+  if (path.size() > static_cast<size_t>(PATH_LENGTH)) path.pop_front();
+}
+
 // Heights within SEARCH_GATE_MAX_SIZE_RATIO of each other; a zero height matches nothing.
 bool same_size(const Box& last, const Box& det) {
   double a = last[3] - last[1], b = det[3] - det[1];
@@ -41,17 +47,13 @@ void Tracker::State::observe(const Box& b, int confirm_frames) {
   hits += 1;
   frames_since_seen = 0;
   confirmed = confirmed || hits >= confirm_frames;
-  path.push_back(center(b));
-  if (path.size() > static_cast<size_t>(PATH_LENGTH)) path.pop_front();
+  push_capped(path, center(b));
 }
 
 void Tracker::State::take_over(const State& other) {
   motion = other.motion;
   hits += other.hits;
-  for (const auto& p : other.path) {
-    path.push_back(p);
-    if (path.size() > static_cast<size_t>(PATH_LENGTH)) path.pop_front();
-  }
+  for (const auto& p : other.path) push_capped(path, p);
 }
 
 const char* Tracker::State::status() const {
@@ -89,9 +91,6 @@ std::vector<Track> Tracker::update(const std::vector<Detection>& input) {
       return match(predicted_boxes(tracks), boxes, allowed, min_iou);
     };
   };
-  auto by_gate = [this](const std::vector<const State*>& tracks, const std::vector<Box>& boxes, const Mask& allowed) {
-    return by_search_gate(tracks, boxes, allowed);
-  };
   auto by_one_hit_distance = [](const std::vector<const State*>& tracks, const std::vector<Box>& boxes,
                                 const Mask& allowed) { return match_by_distance(predicted_boxes(tracks), boxes, allowed); };
   auto append = [](Pairs& pairs, const Pairs& more) { pairs.insert(pairs.end(), more.begin(), more.end()); };
@@ -104,7 +103,7 @@ std::vector<Track> Tracker::update(const std::vector<Detection>& input) {
                                 by_iou(LOW_MIN_IOU), detections, low_allowed, pairs));
   // 3. Searching tracks against the high detections left, by center distance within the gate.
   append(pairs, match_unmatched([this](const State& t) { return t.confirmed && t.frames_since_seen > 0 && gate(t) > 0; },
-                                by_gate, detections, high_allowed, pairs));
+                                std::bind_front(&Tracker::by_search_gate, this), detections, high_allowed, pairs));
   // 4. Tentative tracks against the high detections left, by IoU.
   append(pairs, match_unmatched([](const State& t) { return !t.confirmed; }, by_iou(MIN_IOU), detections,
                                 high_allowed, pairs));

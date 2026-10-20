@@ -311,6 +311,8 @@ Printing a decimal number with the fewest digits that still read back to exactly
 
 **In Tether:** the C++ file writer prints numbers exactly as Python's `json.dumps` does, including when it switches to scientific notation (`1e-05`, `1e+16`), so track files from the two trackers look the same and a text diff shows only real differences.
 
+**Gotcha:** "shortest" doesn't settle the notation. C++'s shortest output prints 10^16 as `1e+16` in one mode and `10000000000000000` in another, and Python picks by its own rule (scientific below 1e-4 and from 1e16 up), so the port has to apply Python's rule itself.
+
 ---
 
 ## Design & testing ideas

@@ -162,6 +162,20 @@ TEST(Cli, PassesTheDampingToTheTracker) {
   for (size_t f = 10; f < out.size(); ++f) EXPECT_EQ(only(out[f]).predicted_box, only(out[9]).predicted_box);
 }
 
+TEST(Cli, AcceptsOptionEqualsValue) {
+  auto frames = track({{det(box_at(0.0), 0.4)}}, {"--min-score=0.5"}, "equals");
+
+  EXPECT_TRUE(frames[0].empty());
+}
+
+TEST(Cli, HelpListsTheDefaults) {
+  std::ostringstream out, err;
+  ASSERT_EQ(run_track_cli({"--help"}, out, err), 0);
+
+  EXPECT_NE(out.str().find("(default 0.25)"), std::string::npos);  // --min-score
+  EXPECT_NE(out.str().find("(default 30)"), std::string::npos);    // --max-missing-frames
+}
+
 TEST(Cli, HelpExitsZero) { EXPECT_EQ(cli({"--help"}), 0); }
 
 TEST(Cli, BadArgumentsAreAnErrorWithAMessage) {
@@ -176,7 +190,9 @@ TEST(Cli, BadArgumentsAreAnErrorWithAMessage) {
                                         {dets, out, "--confirm-frames", "three"},
                                         {dets, out, "--confirm-frames", "3.5"},
                                         {dets, out, "--min-score", "0.5x"},
-                                        {dets, out, "extra"}}) {
+                                        {dets, out, "extra"},
+                                        {dets, out, "-x"},
+                                        {dets, out, "--min-score="}}) {
     std::string err;
     EXPECT_EQ(cli(args, &err), 2) << args.back();
     EXPECT_FALSE(err.empty()) << args.back();

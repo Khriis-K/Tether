@@ -29,7 +29,7 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 
 **Built (C++):**
 - The same tracker and a `tether-track` CLI with the same options and file formats, built with CMake. Its IDs and statuses match the Python tracker's on every frame of the 7 MOT17 videos and 80 Anti-UAV files we compared (`docs/benchmarks/cpp-port-parity.md`).
-- 110 tests: every Python tracker behavior test, ported, plus tests that pin the assignment solver to SciPy's answers. They pass with MSVC on Windows and GCC on Linux.
+- 112 tests: every Python tracker behavior test, ported, plus tests that pin the assignment solver to SciPy's answers. They pass with MSVC on Windows and GCC on Linux.
 
 **Not built yet:** the C++ pipeline (video, detector, timing), TensorRT, CUDA frame prep, the parallel pipeline, the HUD, and the Docker image. There are **no speed results yet**, for the C++ tracker either. Talk about these as the plan, not as achievements.
 

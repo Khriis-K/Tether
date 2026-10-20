@@ -94,12 +94,7 @@ std::vector<nlohmann::json> read_lines(const std::filesystem::path& path, const 
   std::string line;
   while (std::getline(f, line)) {
     if (line.find_first_not_of(" \t\r") == std::string::npos) continue;
-    nlohmann::json obj;
-    try {
-      obj = nlohmann::json::parse(line);
-    } catch (const nlohmann::json::exception& e) {
-      throw std::runtime_error(path.string() + ": " + e.what());
-    }
+    auto obj = rethrowing(path, [&] { return nlohmann::json::parse(line); });
     auto frame = rethrowing(path, [&] { return obj.at("frame").get<long long>(); });
     if (frame != static_cast<long long>(frames.size()))
       throw std::runtime_error(path.string() + ": expected frame " + std::to_string(frames.size()) +
