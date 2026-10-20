@@ -341,7 +341,7 @@ Printing a decimal number with the fewest digits that still read back to exactly
 ### Golden-ratio colours
 A way to give each new item its own colour without knowing how many items there will be. Step the hue (the position around the colour wheel) by the golden ratio, about 0.618 of a turn, for each new ID. Because the golden ratio is the "most irrational" number, the hues never line up into bunches: any first N of them stay spread around the wheel, and back-to-back IDs land far apart. An even split (1/N apart) is better, but only if you know N up front, which a tracker never does.
 
-**In Tether:** `track_hue` in `cpp/src/tether/hud.cpp`. A test checks that for every N up to 60, the closest two of the first N hues are at least 0.3/N apart. Tether's hues come out at least 0.41/N apart for every N up to 60, after the squeeze around the accent. The hues also skip a narrow band around the accent orange, so no track looks like "searching".
+**In Tether:** `track_hue` in `cpp/src/tether/hud.cpp`. A test checks that for every N up to 60, the closest two of the first N hues are at least 0.3/N apart. The hues also skip a narrow band around the accent orange, so no track looks like "searching".
 
 **Gotcha:** colour alone still isn't enough. Some IDs land close together by chance, and some viewers can't tell red from orange. That's why status is shown by line style (see the next entry).
 
@@ -351,9 +351,9 @@ Showing one piece of information two ways at once, so it still reads if one chan
 **In Tether:** a track's status is shown both by colour and by line style. Tracked objects get solid corner brackets. The prediction of where they'll be next is a thin dashed box. A searching object is a thick, longer-dashed box in the accent colour, with a "missing N" label. A test compares the searching box's ink with a prediction's, so "thicker" can't quietly drift away.
 
 ### Image-sequence frame rate
-A folder of numbered images (how MOT17 ships its videos) has no frame rate of its own: it's just pictures. When OpenCV opens one through FFmpeg, it reports FFmpeg's default of 25 FPS, which is made up.
+A folder of numbered images (how MOT17 ships its videos) has no frame rate of its own: it's just pictures. When OpenCV opens one through FFmpeg it can report FFmpeg's default of 25 FPS, which is made up. A PNG sequence in our tests reported nothing at all.
 
-**In Tether:** `--record` saves at the source's frame rate. Trusting the 25 made MOT17-09, really 30 FPS, play back 20% slow. So an image sequence now reports "can't tell" (0), and the recording falls back to 30. The true rate is in each MOT17 video's `seqinfo.ini`; a few are 14 or 25 FPS and would still record at the wrong speed.
+**In Tether:** `--record` saves at the source's frame rate. Trusting the 25 made MOT17-09, really 30 FPS, play back slow (`docs/spec-verify/issue-12.md`). So an image sequence now reports "can't tell" (0), and the recording falls back to 30. The true rate is in each MOT17 video's `seqinfo.ini`; a few are 14 or 25 FPS and would still record at the wrong speed.
 
 ## Design & testing ideas
 

@@ -70,19 +70,40 @@ void corner_brackets(cv::Mat& img, const cv::Rect& r, const cv::Scalar& color, i
   }
 }
 
-// A filled chip with `text` in it, sitting just above `box`, or just inside its
-// top when there's no room above. Kept inside the frame.
+// A filled box with text in it, for labels and badges. `dot` leaves room before
+// the text for a round marker.
+struct Chip {
+  std::string text;
+  double scale;
+  cv::Size text_size, size;
+  int lead;  // space before the text
+};
+
+Chip make_chip(const std::string& text, double scale, bool dot, const Style& s) {
+  int baseline = 0;
+  cv::Size text_size = cv::getTextSize(text, FONT, scale, s.unit, &baseline);
+  int lead = dot ? text_size.height + s.pad() : 0;
+  return {text, scale, text_size,
+          {text_size.width + lead + 2 * s.pad(), text_size.height + baseline + 2 * s.pad()}, lead};
+}
+
+void draw_chip(cv::Mat& img, cv::Point origin, const Chip& c, const cv::Scalar& fill, const cv::Scalar& ink,
+               const Style& s) {
+  cv::rectangle(img, cv::Rect(origin, c.size), fill, cv::FILLED);
+  cv::putText(img, c.text, origin + cv::Point(s.pad() + c.lead, s.pad() + c.text_size.height), FONT, c.scale, ink,
+              s.unit, cv::LINE_AA);
+}
+
+// A label chip sitting just above `box`, or just inside its top when there's
+// no room above. Kept inside the frame.
 void label(cv::Mat& img, const cv::Rect& box, int line, const std::string& text, const cv::Scalar& fill,
            const Style& s) {
-  int baseline = 0;
-  cv::Size size = cv::getTextSize(text, FONT, s.label_scale(), s.unit, &baseline);
-  cv::Size chip(size.width + 2 * s.pad(), size.height + baseline + 2 * s.pad());
-  int top = box.y - line - 1 - chip.height;
+  Chip chip = make_chip(text, s.label_scale(), false, s);
+  int top = box.y - line - 1 - chip.size.height;
   if (top < 0) top = box.y + line + 1;
-  int left = std::clamp(box.x, 0, std::max(0, img.cols - chip.width));
-  cv::rectangle(img, cv::Rect({left, top}, chip), fill, cv::FILLED);
-  cv::putText(img, text, {left + s.pad(), top + s.pad() + size.height}, FONT, s.label_scale(), NEAR_BLACK, s.unit,
-              cv::LINE_AA);
+  top = std::clamp(top, 0, std::max(0, img.rows - chip.size.height));
+  int left = std::clamp(box.x, 0, std::max(0, img.cols - chip.size.width));
+  draw_chip(img, {left, top}, chip, fill, NEAR_BLACK, s);
 }
 
 // The path as segments, each blended over the frame more strongly the newer it is.
@@ -102,19 +123,13 @@ void trail(cv::Mat& img, const std::vector<Point>& path, const cv::Scalar& color
   }
 }
 
-// A badge with `text`, at `origin` (top left); returns where the next one goes.
+// A status badge at `origin` (top left); returns where the next one goes.
 cv::Point badge(cv::Mat& img, cv::Point origin, const std::string& text, bool dot, const Style& s) {
-  int baseline = 0;
-  cv::Size size = cv::getTextSize(text, FONT, s.status_scale(), s.unit, &baseline);
-  int dot_space = dot ? size.height + s.pad() : 0;
-  cv::Size chip(size.width + dot_space + 2 * s.pad(), size.height + baseline + 2 * s.pad());
-  cv::rectangle(img, cv::Rect(origin, chip), NEAR_BLACK, cv::FILLED);
-  if (dot)
-    cv::circle(img, origin + cv::Point(s.pad() + size.height / 2, chip.height / 2), size.height / 2, ACCENT, cv::FILLED,
-               cv::LINE_AA);
-  cv::putText(img, text, origin + cv::Point(s.pad() + dot_space, s.pad() + size.height), FONT, s.status_scale(),
-              OFF_WHITE, s.unit, cv::LINE_AA);
-  return origin + cv::Point(chip.width + s.pad(), 0);
+  Chip chip = make_chip(text, s.status_scale(), dot, s);
+  draw_chip(img, origin, chip, NEAR_BLACK, OFF_WHITE, s);
+  int r = chip.text_size.height / 2;
+  if (dot) cv::circle(img, origin + cv::Point(s.pad() + r, chip.size.height / 2), r, ACCENT, cv::FILLED, cv::LINE_AA);
+  return origin + cv::Point(chip.size.width + s.pad(), 0);
 }
 
 }  // namespace

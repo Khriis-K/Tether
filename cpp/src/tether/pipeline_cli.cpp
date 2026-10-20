@@ -1,5 +1,7 @@
 #include "tether/pipeline_cli.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <csignal>
 #include <ctime>
@@ -60,7 +62,8 @@ constexpr double DEFAULT_RECORD_FPS = 30;  // when the source can't tell its rat
 // A video writer for `path`: Motion JPEG for .avi, MPEG-4 otherwise (.mp4).
 cv::VideoWriter open_recording(const std::filesystem::path& path, double fps, cv::Size size) {
   auto ext = path.extension().string();
-  int fourcc = ext == ".avi" || ext == ".AVI" ? cv::VideoWriter::fourcc('M', 'J', 'P', 'G')
+  std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+  int fourcc = ext == ".avi" ? cv::VideoWriter::fourcc('M', 'J', 'P', 'G')
                                               : cv::VideoWriter::fourcc('m', 'p', '4', 'v');
   cv::VideoWriter writer(path.string(), fourcc, fps, size);
   if (!writer.isOpened()) throw std::runtime_error("can't record to '" + path.string() + "'");
@@ -123,10 +126,12 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
       {"--max-frames", {"N", "stop after N frames (default: run to the end, or until Ctrl-C)",
                         [&](const std::string& v) { o.max_frames = parse_positive(v); }}},
       {"--show", {"", "show the tracks in a window: Space pauses and resumes, q or Esc quits. While paused "
-                      "the pipeline waits, so that frame's draw time in the timing log includes the pause",
+                      "the pipeline waits, so that frame's draw time in the timing log includes the pause, "
+                      "and on a webcam the frames missed meanwhile count as dropped. Time runs unpaused",
                   [&](const std::string&) { o.show = true; }}},
       {"--record", {"VIDEO", "save the video with the tracks drawn (.mp4, or .avi for Motion JPEG), at the "
-                             "source's frame rate (30 when it can't tell)",
+                             "source's frame rate (30 when it can't tell). One frame per frame tracked, so a webcam "
+                             "run that falls behind the camera plays back fast",
                     [&](const std::string& v) { o.record = v; }}},
   };
 
@@ -241,7 +246,10 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     out << frames << " frames";
     if (dropped) out << ", " << *dropped << " dropped by the camera";
     out << "\n";
-    if (recording.isOpened()) out << "recording saved to " << *o.record << "\n";
+    if (recording.isOpened()) {
+      recording.release();  // finishes the file
+      out << "recording saved to " << *o.record << "\n";
+    }
   } catch (const std::exception& e) {
     err << "tether-pipeline: error: " << e.what() << "\n";
     return 1;

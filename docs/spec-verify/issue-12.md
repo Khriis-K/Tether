@@ -53,5 +53,6 @@ Each mutation was applied to one source file. The tests were rebuilt (Release, M
 
 ## Checked by running the app
 
+- **Recording frame rate:** the first real recording read back at 25 FPS, but MOT17-09 is 30 FPS (`seqinfo.ini`). OpenCV, through FFmpeg, reported 25 for the JPEG folder itself, while the test's PNG sequence reported nothing. Image sequences now report no rate (`VideoSourceFps.AnImageSequenceCantTell`), and the same run reads back at 30.
 - **Recording:** `tether-pipeline` with `--record` on 300 frames of MOT17-09 (YOLO26n at 640) gave a 30 FPS, 300-frame MP4. Frame 250 is `docs/media/hud-mot17-09.jpg`. It shows brackets and labels on tracked people, thin dashed predictions, orange dashed searching boxes with "N  missing K", and trails.
 - **Window:** `--show` ran on the same video, and the window kept drawing (the timing log kept growing). Space, q and Esc in the live window could **not** be pressed from this session, because the desktop was locked: Windows refused both the screenshot and the keystrokes. The key handling is covered by the scripted-screen tests above. The highgui wrapper in between (`WindowScreen`, about 15 lines) hasn't been run with a real key press.
