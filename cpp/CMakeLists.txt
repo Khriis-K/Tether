@@ -67,10 +67,14 @@ if(TETHER_BUILD_TESTS)
 
   # The Python-vs-C++ match check on the scripted scenes, against the binaries just built.
   # Needs the Python tracker's dependencies (numpy, scipy). Real files: run tether-parity by hand.
-  find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  add_test(NAME parity_scripted
-    COMMAND Python3::Interpreter -m tether.parity --scripted --repeats 1
-      --cpp-dir $<TARGET_FILE_DIR:tether_track> --out ${CMAKE_CURRENT_BINARY_DIR}/parity-scripted.json)
-  set_tests_properties(parity_scripted PROPERTIES
-    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/../python")
+  find_package(Python3 COMPONENTS Interpreter)
+  if(NOT Python3_FOUND)
+    message(WARNING "No Python found: the Python-vs-C++ check (parity_scripted) is not added")
+  else()
+    add_test(NAME parity_scripted
+      COMMAND Python3::Interpreter -m tether.parity --scripted --repeats 1
+        --cpp-dir $<TARGET_FILE_DIR:tether_track> --out ${CMAKE_CURRENT_BINARY_DIR}/parity-scripted.json)
+    set_tests_properties(parity_scripted PROPERTIES
+      ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/../python")
+  endif()
 endif()

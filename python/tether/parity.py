@@ -27,7 +27,8 @@ from tether.formats import Detection, Track, load_detections, load_tracks, save_
 from tether.tracker import Tracker
 
 TOLERANCE = 1e-6  # pixels; the port differs by about 1e-9 on real files (docs/benchmarks/cpp-port-parity.md)
-DEFAULT_CPP_DIR = Path(__file__).resolve().parents[2] / "cpp" / "build" / "Release"
+REPO = Path(__file__).resolve().parents[2]
+DEFAULT_CPP_DIR = REPO / "cpp" / "build"
 
 Frames = list[list[Track]]
 
@@ -71,10 +72,10 @@ def _difference(py: Track, cpp: Track, tolerance: float) -> str | None:
         return f"path length {len(py.path)} (Python) vs {len(cpp.path)} (C++)"
     for field in ("box", "predicted_box"):
         a, b = getattr(py, field), getattr(cpp, field)
-        if _max_difference(a, b) > tolerance:
+        if not _within(a, b, tolerance):
             return f"{field} {a} (Python) vs {b} (C++)"
     for a, b in zip(py.path, cpp.path):
-        if _max_difference(a, b) > tolerance:
+        if not _within(a, b, tolerance):
             return f"path point {a} (Python) vs {b} (C++)"
     return None
 
@@ -84,6 +85,11 @@ def max_box_difference(python: Frames, cpp: Frames) -> float:
     return max((_max_difference(getattr(a, field), getattr(b, field))
                 for pf, cf in zip(python, cpp) for a, b in zip(pf, cf)
                 for field in ("box", "predicted_box")), default=0.0)
+
+
+def _within(a, b, tolerance: float) -> bool:
+    # Written as <= so a NaN on either side fails: every comparison with NaN is False.
+    return all(abs(x - y) <= tolerance for x, y in zip(a, b))
 
 
 def _max_difference(a, b) -> float:
@@ -102,28 +108,24 @@ def time_python(frames: list[list[Detection]], repeats: int) -> list[float]:
     return times
 
 
-def find_cpp_binary(cpp_dir: Path, name: str) -> Path | None:
-    for candidate in (Path(cpp_dir) / f"{name}.exe", Path(cpp_dir) / name):
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-def _cpp_binary(cpp_dir: Path, name: str) -> Path:
-    binary = find_cpp_binary(cpp_dir, name)
+def _run_cpp(cpp_dir: Path, name: str, *args) -> str:
+    """Run a C++ binary from `cpp_dir` (or its Release folder, for Visual Studio builds); returns its output."""
+    candidates = [Path(cpp_dir) / sub / f"{name}{ext}" for sub in ("Release", ".") for ext in (".exe", "")]
+    binary = next((c for c in candidates if c.is_file()), None)
     if binary is None:
         raise SystemExit(f"tether-parity: error: no {name} in {cpp_dir}; build it with cpp/build.sh Release")
-    return binary
+    done = subprocess.run([binary, *args], capture_output=True, text=True)
+    if done.returncode != 0:
+        raise SystemExit(f"tether-parity: error: {name} failed (exit {done.returncode}): {done.stderr.strip()}")
+    return done.stdout
 
 
 def run_cpp_tracker(cpp_dir: Path, detections_path: Path, tracks_path: Path) -> None:
-    subprocess.run([_cpp_binary(cpp_dir, "tether-track"), detections_path, tracks_path], check=True)
+    _run_cpp(cpp_dir, "tether-track", detections_path, tracks_path)
 
 
 def time_cpp(cpp_dir: Path, detections_path: Path, repeats: int) -> list[float]:
-    done = subprocess.run([_cpp_binary(cpp_dir, "tether-time-track"), detections_path, "--repeats", str(repeats)],
-                          check=True, capture_output=True, text=True)
-    return json.loads(done.stdout)["repeats_ms"]
+    return json.loads(_run_cpp(cpp_dir, "tether-time-track", detections_path, "--repeats", str(repeats)))["repeats_ms"]
 
 
 def scripted_inputs() -> dict[str, list[list[Detection]]]:
@@ -197,12 +199,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("detections", nargs="*", help="detection files (.jsonl) to run through both trackers")
     parser.add_argument("--scripted", action="store_true", help="also run the built-in scripted scenes")
     parser.add_argument("--cpp-dir", type=Path, default=DEFAULT_CPP_DIR,
-                        help="folder holding tether-track and tether-time-track (default: the Release build)")
+                        help="C++ build folder holding tether-track and tether-time-track (default: cpp/build)")
     parser.add_argument("--tolerance", type=float, default=TOLERANCE,
                         help=f"largest allowed box, predicted box or path difference in pixels (default {TOLERANCE})")
     parser.add_argument("--repeats", type=int, default=5, help="timed runs per file; the median is kept (default 5)")
     parser.add_argument("--out", type=Path,
-                        help="results file to write (default: results/parity-<date>-<time>.json)")
+                        help="results file to write (default: results/parity-<date>-<time>.json in the repo)")
     args = parser.parse_args(argv)
     if not args.detections and not args.scripted:
         parser.error("give detection files, --scripted, or both")
@@ -233,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         "speedup": total_python / total_cpp,  # over all inputs together, so long files weigh more
         "inputs": results,
     }
-    out = args.out or Path("results") / f"parity-{datetime.now():%Y%m%d-%H%M%S}.json"
+    out = args.out or REPO / "results" / f"parity-{datetime.now():%Y%m%d-%H%M%S}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(f"{'all match' if summary['all_match'] else 'MISMATCH'}; tracking step {summary['speedup']:.1f}x faster in C++")

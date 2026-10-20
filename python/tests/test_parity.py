@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import subprocess
 import time
 
 import pytest
@@ -67,6 +68,21 @@ def test_a_box_beyond_the_tolerance_is_reported(field):
 
     assert (m.frame, m.track_id) == (1, 2)
     assert field in m.what
+
+
+@pytest.mark.parametrize("field", ["box", "predicted_box"])
+def test_a_nan_box_is_a_mismatch(field):
+    # abs(nan - x) > tolerance is False, so a NaN must not slip through as "within tolerance".
+    nan = float("nan")
+    other = [[dataclasses.replace(track(1), **{field: (nan, 0.0, 10.0, 10.0)})], FRAMES[1], FRAMES[2]]
+
+    assert first_mismatch(FRAMES, other).frame == 0
+
+
+def test_a_nan_path_point_is_a_mismatch():
+    other = [[track(1, path=((float("nan"), 5.0),))], FRAMES[1], FRAMES[2]]
+
+    assert first_mismatch(FRAMES, other).frame == 0
 
 
 def test_a_path_point_beyond_the_tolerance_is_reported():
@@ -233,6 +249,22 @@ def test_main_keeps_the_median_of_the_repeats(tmp_path, fake_cpp, monkeypatch):
 
     first = json.loads(out.read_text())["inputs"][0]
     assert (first["python_ms"], first["cpp_ms"]) == (4.0, 2.0)
+
+
+def test_a_failing_cpp_binary_stops_with_its_error(tmp_path, monkeypatch):
+    (tmp_path / "tether-track").write_text("")  # found, but "runs" via the stand-in below
+    monkeypatch.setattr(parity.subprocess, "run",
+                        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, "", "bad detection file"))
+
+    with pytest.raises(SystemExit) as e:
+        parity.run_cpp_tracker(tmp_path, tmp_path / "d.jsonl", tmp_path / "t.jsonl")
+    assert "bad detection file" in str(e.value.code)
+
+
+def test_a_missing_cpp_binary_says_how_to_build_it(tmp_path):
+    with pytest.raises(SystemExit) as e:
+        parity.time_cpp(tmp_path, tmp_path / "d.jsonl", 1)
+    assert "cpp/build.sh" in str(e.value.code)
 
 
 def test_main_needs_an_input(tmp_path, fake_cpp):
