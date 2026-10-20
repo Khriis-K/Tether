@@ -52,7 +52,7 @@ Prototype, merge at confirmation, cap 0.5, size check on:
 | 5 + 0.5 | 0.5 | 76.0% | 73.1% | 88.6% | 588 | |
 | 10 + 0.5 | 0.5 | 88.4% | 81.2% | 88.8% | 700 | 3 / 3 |
 | 10 + 0.5 | none | 88.4% | 81.2% | 88.8% | 701 | 854 / 539 |
-| **10 + 1** | **0.5** | **88.4%** | **85.3%** | **88.8%** | 717 | |
+| **10 + 1** | **0.5** | **88.4%** | **85.3%** | **88.8%** | 717 | 3 / 3 |
 | 20 + 0.5 | 0.5 | 88.4% | 86.2% | 88.8% | 724 | |
 | 20 + 1 | 0.5 | 88.4% | 86.7% | 88.8% | 725 | |
 | unlimited | 0.5 | 88.4% | 87.4% | 88.8% | 728 | |
@@ -86,13 +86,34 @@ Binds use #35's definition (of gate checks with leftover detections, the share w
 | #35 default | 41.46 / 49.38 / 731 | 33.13 / 37.62 / 529 |
 | merge 10 + 1 | 41.46 / 49.38 / 732 | 33.13 / 37.62 / 529 |
 
-Per video, every HOTA is within 0.01 of its committed score at both sizes. The one change is MOT17-05 at 1280×736: +1 ID switch (75 → 76), with IDF1 +0.10 (58.29 → 58.39) and HOTA +0.01, which looks like one correct merge that CLEAR counts as a switch.
+Per video, committed #35 → merge 10 + 1:
+
+| Video | Size | HOTA | IDF1 | ID switches |
+|---|---|---|---|---|
+| MOT17-02 | 1280×736 | 27.49 → 27.49 | 32.05 → 32.05 | 136 → 136 |
+| MOT17-04 | 1280×736 | 45.62 → 45.62 | 54.16 → 54.16 | 177 → 177 |
+| MOT17-05 | 1280×736 | 42.65 → 42.66 | 58.29 → 58.39 | 75 → 76 |
+| MOT17-09 | 1280×736 | 44.59 → 44.59 | 52.69 → 52.69 | 67 → 67 |
+| MOT17-10 | 1280×736 | 35.85 → 35.85 | 44.87 → 44.87 | 134 → 134 |
+| MOT17-11 | 1280×736 | 49.09 → 49.09 | 52.47 → 52.47 | 36 → 36 |
+| MOT17-13 | 1280×736 | 37.51 → 37.51 | 49.00 → 49.00 | 106 → 106 |
+| MOT17-02 | 640 | 23.92 → 23.92 | 25.88 → 25.88 | 57 → 57 |
+| MOT17-04 | 640 | 31.51 → 31.51 | 33.97 → 33.97 | 64 → 64 |
+| MOT17-05 | 640 | 42.33 → 42.33 | 55.81 → 55.81 | 76 → 76 |
+| MOT17-09 | 640 | 39.01 → 39.01 | 45.11 → 45.11 | 64 → 64 |
+| MOT17-10 | 640 | 30.84 → 30.84 | 38.95 → 38.95 | 152 → 152 |
+| MOT17-11 | 640 | 48.10 → 48.11 | 52.84 → 52.84 | 35 → 35 |
+| MOT17-13 | 640 | 27.82 → 27.82 | 34.51 → 34.51 | 81 → 81 |
+
+The defaults make 3 merges on all of MOT17 at each size. The one change is MOT17-05 at 1280×736: +1 ID switch (75 → 76), with IDF1 +0.10 (58.29 → 58.39) and HOTA +0.01. Our guess, not checked on that video: one of the 3 merges handed a person back to their old ID, which CLEAR counts as a switch while IDF1 rewards it. **We don't count it as a regression** under the issue's "off by default if MOT17 regresses" rule, because HOTA and IDF1, the two metrics that score the whole identity, are flat or up on every video. One extra ID switch out of 731 is the only movement. If you read the rule strictly, per metric, this is the cell that would flip it.
 
 **Distance to the SPEC targets: ID kept at 20% deletion 85.3% vs 95%, 9.7 points short (was 35.1). 1 s recovery 88.8% vs 80%, met.** With 29–37 holder changes left, what's left is mostly frames where no track holds the drone, not frames held by the wrong ID.
 
 ## Caveats
 
 - **Sparse scenes aren't tested.** MOT17 is crowded, so the cap binds, and on Anti-UAV a merge can't be wrong. In between, a lone person who leaves can hand their ID to a same-size newcomer up to 10 + 1 per missed frame box sizes away (up to about 40 heights after 30 frames), if the newcomer is confirmed before the old track is removed.
+- **The older ID survives because of #31's current state.** Nothing compares ages. A tentative track is dropped on its first miss, so it is always younger than a track that was confirmed and then missed. If #31 lets tentative tracks survive a miss, that stops being guaranteed, and the merge should check ages.
+- **The reach is in the old track's predicted box size**, as the gate is. A coasted prediction's size drifts (see the MOT17-09 diagnosis in antiuav-search-gate-cap.md), and at 10 + 1 per frame that drift moves the reach more than it moves the gate. The size check compares against the last observed box, so at least the new box must match the real size.
 - The reach was tuned on val; test stays unseen.
 
 ## Reproduce

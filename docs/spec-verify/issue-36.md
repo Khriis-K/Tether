@@ -20,7 +20,7 @@ Result: VERIFIED
 
 ### Criterion C3: a much bigger or smaller box is never merged
 Test: test_a_much_bigger_or_smaller_box_is_never_merged (both directions)
-Mutation: the `_same_size` check is dropped from `_duplicates`.
+Mutation: the `_same_size` check is dropped from `_is_duplicate_of`.
 Result: VERIFIED
 
 ### Criterion C3b: a box within SEARCH_GATE_MAX_SIZE_RATIO is still merged
@@ -30,7 +30,7 @@ Result: VERIFIED
 
 ### Criterion C4: a nearby confirmed track caps the reach
 Test: test_a_nearby_confirmed_track_caps_the_reach[0.5-False]
-Mutation: `_duplicates` uses the uncapped reach.
+Mutation: `_is_duplicate_of` uses the uncapped reach.
 Result: VERIFIED
 
 ### Criterion C4b: with the cap off (inf), the same duplicate is merged
@@ -40,12 +40,12 @@ Result: VERIFIED. The first mutation tried (hardcode 0.5 in the `min` line) surv
 
 ### Criterion C5: the reach grows with frames searched
 Test: test_the_reach_grows_with_frames_searched[1.0-True]
-Mutation: the growth term is dropped.
+Mutation: the growth term is dropped from `_reach`.
 Result: VERIFIED
 
 ### Criterion C5b: the reach is the one the tracker was given
 Test: test_the_reach_grows_with_frames_searched[0.0-False]
-Mutation: `_duplicates` uses the `MERGE_REACH` constant instead of `merge_reach`.
+Mutation: `_reach` uses the `MERGE_REACH` constant instead of `merge_reach`.
 Result: VERIFIED
 
 ### Criterion C6: a duplicate beyond the default reach keeps its own ID
@@ -64,6 +64,6 @@ Mutation: the CLI parses the flags but doesn't pass them to `Tracker`.
 Result: VERIFIED
 
 ## Verification results
-12/12 criteria VERIFIED.
+12/12 criteria VERIFIED. (Run before the review's rename of `_duplicates` to `_is_duplicate_of` and the reach's move into `_reach`; both are pure refactors and the 12 tests still pass.)
 
 Measurement criteria (the duplicate counts before building, ID kept and gap recovery before and after, the cap's bind rate, MOT17 per video at both input sizes) are benchmark results, not unit-testable; they are in [antiuav-duplicates.md](../benchmarks/antiuav-duplicates.md).
