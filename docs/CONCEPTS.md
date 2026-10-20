@@ -140,6 +140,13 @@ A track whose last box touched the frame edge most likely left the scene, so it 
 
 **Gotcha:** touching the edge isn't the same as leaving. On MOT17-04 the rule blocked two correct re-matches of people standing partly cut off at the top edge. And without appearance (below), the same person walking back in looks exactly like a newcomer, so the rule gives both a new ID.
 
+### Camera-motion compensation (GMC) (tried, not feasible)
+When the camera pans, every object's image motion includes the camera's. Global motion compensation estimates that camera motion between frames, usually as an affine fit to how background points moved (optical flow plus RANSAC). It then warps each track's predicted box by it, so the filter models only the object's own motion. BoT-SORT does this online. Tether would read it from a precomputed per-frame file to stay image-free.
+
+**In Tether:** not built. #32 checked feasibility first on Anti-UAV val: 76.2% of frame pairs had too few textured background points to fit, and compensation lowered the drone's velocity variance by only 5.8% overall. On the few textured clips it halved the variance, so the method works; the sky just has nothing to register against. See `docs/benchmarks/antiuav-camera-motion.md`.
+
+**Gotcha:** it fails *confidently*, not loudly. A point on flat sky has no gradient, so optical flow leaves it in place and says "no motion", and a forward-backward check agrees. That's the **aperture problem**: you can only see motion where the image has texture to move. Static overlays (a crosshair, on-screen text) do the same. So a 0% fallback rate can mean every frame confidently estimated "the camera didn't move". Check the result, not just how many points survived: here, whether the tracked object's motion actually got smoother.
+
 ### Appearance re-identification (re-ID)
 Telling objects apart by what they look like, usually from an embedding a neural network computes for each box crop, instead of only by where the box is and how it moves. It's what lets a tracker recognize the same person coming back after leaving the frame, which no motion rule can do.
 

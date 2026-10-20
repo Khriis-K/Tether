@@ -300,8 +300,8 @@ Measure items 1–3 separately before combining. They interact: damping changes 
 
 - **Frame rate: answered, 20 fps.** The Anti-UAV paper says "25 FPS" ([arXiv 2101.08466](https://ar5iv.labs.arxiv.org/html/2101.08466)), but every one of the 318 `visible.mp4` files in the download reports 20.0 fps, and each clip's label count matches its frame count.
 - **Drone box sizes: answered, larger than assumed.** Over all labeled visible frames (all splits), box area is about 2,400 / 7,400 / 16,000 px² at the 10th / 50th / 90th percentile, roughly 49 / 86 / 127 px square. The ~30 px assumption above is too small, so IoU tolerates more center error than estimated there; the conclusions about coasting still need measuring on val.
-- **Telemetry.** No pan/tilt telemetry found in Anti-UAV300; absence is not confirmed.
-- **Sky texture.** Whether Anti-UAV300 visible frames have enough texture for GMC is unknown. We need to run a GMC pass and count inliers.
+- **Telemetry: answered, on screen.** No telemetry file ships with Anti-UAV300, but every visible frame has the pan-tilt azimuth ("方位") and elevation ("俯仰") burned in at the top left, to 0.01°, updating every few frames. Not used yet (#32).
+- **Sky texture: answered, too little.** 76.2% of val frame pairs fall back to identity, and compensation lowers the drone's velocity variance by only 5.8% (#32, `docs/benchmarks/antiuav-camera-motion.md`).
 - **Crosshair overlay: answered, yes.** The visible frames have a burned-in, image-fixed crosshair (bracket lines around the center), seen in rendered frames of `20190925_134301_1_2`. A GMC tool would need to mask it.
 - **UTTracker.** Its background-alignment method and local/global switching rule are unverified (PDF returned 403).
 - **IMM.** I found no 2D MOT paper using CV + CP specifically.

@@ -2,7 +2,7 @@
 
 What we learned building Tether, written to be re-read: before an interview, when writing a portfolio page, or when coming back to the project after a break. Read the first section for a two-minute refresh, and read the stories when you want the detail behind a claim.
 
-Definitions live in [CONCEPTS.md](CONCEPTS.md); this file links to them rather than repeating them. Numbers are as of 2026-10-19 and come from the write-ups linked in each story. Update this file when the numbers change, and never round a claim up.
+Definitions live in [CONCEPTS.md](CONCEPTS.md); this file links to them rather than repeating them. Numbers are as of 2026-10-20 and come from the write-ups linked in each story. Update this file when the numbers change, and never round a claim up.
 
 **Contents**
 - [The two-minute refresh](#the-two-minute-refresh): pitch, what's built, headline results, debugging playbook
@@ -48,6 +48,7 @@ The habits these stories taught, in the order you'd reach for them:
 6. **Judge by the outcome, not a stand-in.** A better intermediate number doesn't always mean a better result. *([Damping](#better-predictions-didnt-mean-more-re-matches-30); [fewer new IDs](#fewer-new-ids-same-score-31))*
 7. **Write the ceiling next to the target.** If the best possible score is below the target, tuning can't get there. *([Two IDs at once](#the-drone-held-two-ids-at-once-36-33))*
 8. **Count the failure on real data before fixing it.** A scripted scene shows a failure can happen, not how often. *([Stopping one swap](#stopping-one-swap-cost-more-than-it-saved-37))*
+9. **Check that a quality gate passes for the right reason.** "Enough points" isn't "the right answer"; pair it with a check on the outcome. *([The camera-motion check](#the-camera-motion-check-said-fine-when-it-wasnt-32))*
 
 ---
 
@@ -191,6 +192,17 @@ See the [edge rule](CONCEPTS.md#edge-rule-tried-shelved) and `docs/benchmarks/ed
 
 **Lesson:** a count that goes down isn't a score that goes up. Before building, ask whether the thing you're counting actually costs the metric, here whether a dying new track cost an ID that was scored. Also, mutation-testing a file in place while benchmarks import it can change what the benchmarks run, so benchmark a frozen copy.
 
+### The camera-motion check said "fine" when it wasn't (#32)
+**In two sentences:** before building camera-motion compensation for Anti-UAV, we counted how many frames had enough background points to estimate the camera's motion, and the first count said all of them. The points were flat sky and crosshair lines, all reporting "no motion"; done properly, 76.2% of val frames have nothing to register against, so we closed the issue without building it.
+
+**Problem:** the drone's image motion is mostly the pan-tilt camera chasing it. Compensating for camera motion would remove the cause instead of working around it, but only if the mostly empty sky has enough texture to measure the motion from.
+
+**How we found it:** the first prototype reported 0% fallback with hundreds of inliers per frame, while estimating 0.1 px/frame of camera motion against a drone moving about 20 px/frame. The on-screen azimuth readout showed the camera panning. Flat sky has no gradient, so optical flow reports zero motion there and passes its own consistency check: the [aperture problem](CONCEPTS.md#camera-motion-compensation-gmc-tried-not-feasible). With a texture filter, the survivors were all next to the burned-in crosshair, which never moves either. Masking both gave the real number. The drone's velocity variance, the issue's sanity check, confirmed it: down only 5.8% over all of val, but halved on the few textured clips. See `docs/benchmarks/antiuav-camera-motion.md`.
+
+**What we did:** closed #32 at the feasibility step, as the issue planned. Along the way we found the pan-tilt angles burned into every frame, which the research had looked for in the dataset's files and not found. That's a possible source of camera motion that doesn't need texture, and it hasn't been tried.
+
+**Lesson:** a quality gate can pass for the wrong reason. A fallback rate counts how many points the estimate used, not whether it was right, so pair it with a check on the outcome. And look at the data before the research summary: the telemetry the research ruled out was on screen the whole time.
+
 ---
 
 ## What didn't work
@@ -212,6 +224,7 @@ Each of these was measured, not guessed, and the write-ups have the tables. Inte
 - **Velocity damping (#30).** It's in the code but off by default: without the gate it hurts recovery, and with the cap it adds ID switches at 640. See `docs/benchmarks/antiuav-coast-damping.md`.
 - **The edge rule (#37).** Blocking the gate and merge for tracks last seen at the frame edge fixed a scripted sparse-scene swap. It also cost Anti-UAV val about 1 point of ID kept (85.3% → 84.3% at 20% deletion) and regressed MOT17-04 at 1280×736. A velocity-gated version fixed MOT17-04 only with a threshold fit to two samples. See `docs/benchmarks/edge-rule.md`.
 - **Letting new tracks survive a miss (#31).** A leaky counter (survive one miss, confirm on hits minus misses) cut new IDs on Anti-UAV val from 1925 to 1508 at 20% deletion, but ID kept went from 85.3% to 85.2%. MOT17 at 640 lost 0.46 HOTA (33.13 → 32.67) for a reason we didn't find. See `docs/benchmarks/tentative-miss.md`.
+- **Camera-motion compensation from the image (#32).** Closed at the feasibility check, not built. On Anti-UAV val, 76.2% of frame pairs had too few textured background points to estimate the camera's motion, and compensation lowered the drone's velocity variance by only 5.8%. Looser thresholds cut the fallback rate but not the variance. See `docs/benchmarks/antiuav-camera-motion.md`.
 - **Bigger detector models at 640.** YOLO26m found 0% of 50–100 px people on MOT17-04, the same as the nano model. See ADR 0002.
 
 ---
