@@ -41,6 +41,14 @@ the reach is far wider than the gate because the drone often reappears 5-10 box
 sizes from where it was predicted; in a crowd the cap keeps it from reaching a
 neighbor (docs/benchmarks/antiuav-duplicates.md).
 
+Single-target prior (`single_target`, off by default): a diagnostic upper bound
+for one-object footage like Anti-UAV, never a default and never ported (#34).
+If, at the start of a frame, exactly one confirmed track exists and it is
+searching, after stage 3 it takes the nearest high detection left anywhere in
+the frame, with no IoU, gate, cap or size limit, before tentative tracks can.
+False for general tracking: it says how much a perfect re-association recovers
+(docs/benchmarks/antiuav-single-target.md).
+
 Detections scored at least `min_score` are high; those above LOW_SCORE but below
 `min_score` are low, and only ever used in stage 2, so they never start a track;
 the rest are dropped. Detection files can be saved unfiltered and each tracker
@@ -139,7 +147,7 @@ class Tracker:
                  search_gate_growth: float = SEARCH_GATE_GROWTH,
                  search_gate_cap: float = SEARCH_GATE_CAP,
                  coast_damping: float = COAST_DAMPING, merge_reach: float = MERGE_REACH,
-                 merge_reach_growth: float = MERGE_REACH_GROWTH) -> None:
+                 merge_reach_growth: float = MERGE_REACH_GROWTH, single_target: bool = False) -> None:
         self._confirm_frames = confirm_frames
         self._max_missing_frames = max_missing_frames
         self._min_score = min_score
@@ -149,6 +157,7 @@ class Tracker:
         self._coast_damping = coast_damping
         self._merge_reach = merge_reach
         self._merge_reach_growth = merge_reach_growth
+        self._single_target = single_target
         self._tracks: list[_TrackState] = []
         self._next_id = 1
 
@@ -169,6 +178,11 @@ class Tracker:
                                        detections, low_allowed, pairs)
         pairs += self._match_unmatched(lambda t: t.status == "searching" and self._gate(t) > 0,
                                        self._by_search_gate, detections, high_allowed, pairs)
+        if self._single_target:
+            confirmed = [t for t in self._tracks if t.confirmed]
+            if len(confirmed) == 1 and confirmed[0].status == "searching":
+                pairs += self._match_unmatched(lambda t: t is confirmed[0], _by_any_distance, detections,
+                                               high_allowed, pairs)
         pairs += self._match_unmatched(lambda t: not t.confirmed, _by_iou(), detections,
                                        high_allowed, pairs)
         pairs += self._match_unmatched(lambda t: t.hits == 1, _by_one_hit_distance, detections,
@@ -287,6 +301,10 @@ def _same_size(last: Box, det: Box) -> bool:
     """Heights within SEARCH_GATE_MAX_SIZE_RATIO of each other; a zero height matches nothing."""
     a, b = last[3] - last[1], det[3] - det[1]
     return a > 0 and b > 0 and max(a / b, b / a) <= SEARCH_GATE_MAX_SIZE_RATIO
+
+
+def _by_any_distance(tracks: list[_TrackState], boxes: list[Box], allowed: np.ndarray) -> list[tuple[int, int]]:
+    return match_by_distance([t.motion.box for t in tracks], boxes, allowed, max_distance=math.inf)
 
 
 def _by_one_hit_distance(tracks: list[_TrackState], boxes: list[Box], allowed: np.ndarray) -> list[tuple[int, int]]:
