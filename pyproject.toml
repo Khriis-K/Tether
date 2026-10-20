@@ -24,6 +24,7 @@ tether-timing = "tether.timing:main"
 tether-mot17 = "tether.mot17:main"
 tether-bytetrack = "tether.bytetrack:main"
 tether-antiuav = "tether.antiuav:main"
+tether-parity = "tether.parity:main"
 
 [tool.setuptools.packages.find]
 where = ["python"]

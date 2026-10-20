@@ -24,6 +24,7 @@ add_library(tether_core
   src/tether/formats.cpp
   src/tether/kalman.cpp
   src/tether/matching.cpp
+  src/tether/timing.cpp
   src/tether/tracker.cpp
 )
 target_include_directories(tether_core PUBLIC src)
@@ -32,6 +33,10 @@ target_link_libraries(tether_core PRIVATE nlohmann_json::nlohmann_json)
 add_executable(tether_track apps/tether_track.cpp)
 target_link_libraries(tether_track PRIVATE tether_core)
 set_target_properties(tether_track PROPERTIES OUTPUT_NAME tether-track)
+
+add_executable(tether_time_track apps/tether_time_track.cpp)
+target_link_libraries(tether_time_track PRIVATE tether_core)
+set_target_properties(tether_time_track PROPERTIES OUTPUT_NAME tether-time-track)
 
 option(TETHER_BUILD_TESTS "Build the tests" ON)
 if(TETHER_BUILD_TESTS)
@@ -53,9 +58,19 @@ if(TETHER_BUILD_TESTS)
     tests/test_matching.cpp
     tests/test_merge.cpp
     tests/test_search_gate.cpp
+    tests/test_timing.cpp
     tests/test_tracker.cpp
   )
-  target_link_libraries(tether_tests PRIVATE tether_core GTest::gtest_main)
+  target_link_libraries(tether_tests PRIVATE tether_core nlohmann_json::nlohmann_json GTest::gtest_main)
   include(GoogleTest)
   gtest_discover_tests(tether_tests)
+
+  # The Python-vs-C++ match check on the scripted scenes, against the binaries just built.
+  # Needs the Python tracker's dependencies (numpy, scipy). Real files: run tether-parity by hand.
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME parity_scripted
+    COMMAND Python3::Interpreter -m tether.parity --scripted --repeats 1
+      --cpp-dir $<TARGET_FILE_DIR:tether_track> --out ${CMAKE_CURRENT_BINARY_DIR}/parity-scripted.json)
+  set_tests_properties(parity_scripted PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/../python")
 endif()
