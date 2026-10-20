@@ -7,8 +7,8 @@ def moving_box(frame, start_x=0.0, speed=2.0, y=50.0, size=20.0):
     return (x, y, x + size, y + size)
 
 
-def run(frames):
-    tracker = Tracker()
+def run(frames, **settings):
+    tracker = Tracker(**settings)
     return [tracker.update(dets) for dets in frames]
 
 
@@ -82,7 +82,7 @@ def test_detections_of_different_classes_do_not_match():
         [Detection(box=(0.0, 0.0, 10.0, 10.0), score=0.9, cls=1)],
     ]
 
-    outputs = run(frames)
+    outputs = run(frames, tentative_misses=0)
 
     assert outputs[0][0].id != outputs[1][0].id
 
@@ -94,7 +94,7 @@ def test_new_object_gets_a_new_id_that_is_never_reused():
         [Detection(box=(0.0, 0.0, 10.0, 10.0), score=0.9, cls=0)],
     ]
 
-    outputs = run(frames)
+    outputs = run(frames, tentative_misses=0)
 
     assert outputs[1] == []
     assert outputs[2][0].id != outputs[0][0].id
@@ -112,7 +112,7 @@ def test_confirmed_track_gets_a_detection_before_a_tentative_track_that_overlaps
         [Detection(box=shared, score=0.9, cls=0)],
     ]
 
-    outputs = run(frames)
+    outputs = run(frames, tentative_misses=0)
 
     confirmed = next(t for t in outputs[2] if t.box == confirmed_box)
     assert confirmed.status == "tracked"

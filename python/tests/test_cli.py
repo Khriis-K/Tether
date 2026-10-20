@@ -27,7 +27,7 @@ def test_cli_writes_one_track_frame_per_detection_frame(tmp_path):
     tracks_path = tmp_path / "tracks.jsonl"
     save_detections(dets_path, [[Detection(box=(0.0, 0.0, 10.0, 10.0), score=0.9, cls=0)], []])
 
-    assert main([str(dets_path), str(tracks_path)]) == 0
+    assert main([str(dets_path), str(tracks_path), "--tentative-misses", "0"]) == 0
 
     frames = load_tracks(tracks_path)
     assert len(frames) == 2

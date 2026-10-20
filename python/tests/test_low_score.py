@@ -71,7 +71,7 @@ def test_low_detection_does_not_match_a_searching_track():
 
 
 def test_low_detection_does_not_match_a_tentative_track():
-    tracker = Tracker(confirm_frames=3)
+    tracker = Tracker(confirm_frames=3, tentative_misses=0)
     tracker.update([det(BOX, HIGH)])  # tentative
 
     tracks = tracker.update([det(BOX, LOW)])

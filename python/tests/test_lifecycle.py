@@ -55,7 +55,7 @@ def test_one_frame_false_detection_never_becomes_a_confirmed_track():
     frames = [[det(moving(f))] for f in range(15)]
     frames[5].append(det(box_at(400.0, y=300.0)))
 
-    outputs = run(frames, confirm_frames=3, max_missing_frames=30)
+    outputs = run(frames, confirm_frames=3, max_missing_frames=30, tentative_misses=0)
 
     real_id = outputs[0][0].id
     blip_ids = {t.id for t in outputs[5]} - {real_id}
@@ -70,7 +70,7 @@ def test_one_frame_false_detection_never_becomes_a_confirmed_track():
 
 def test_tentative_track_that_misses_a_frame_is_dropped_before_confirming():
     outputs = run([[det(box_at(0.0))], [det(box_at(0.0))], [], [det(box_at(0.0))]],
-                  confirm_frames=3, max_missing_frames=30)
+                  confirm_frames=3, max_missing_frames=30, tentative_misses=0)
 
     assert outputs[2] == []
     assert outputs[3][0].id != outputs[0][0].id

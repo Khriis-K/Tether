@@ -5,7 +5,7 @@ import argparse
 from tether.formats import load_detections, save_tracks
 from tether.tracker import (COAST_DAMPING, CONFIRM_FRAMES, MAX_MISSING_FRAMES, MERGE_REACH,
                             MERGE_REACH_GROWTH, MIN_SCORE, SEARCH_GATE, SEARCH_GATE_CAP,
-                            SEARCH_GATE_GROWTH, Tracker)
+                            SEARCH_GATE_GROWTH, TENTATIVE_MISSES, Tracker)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -13,8 +13,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("detections", help="input detection file (.jsonl)")
     parser.add_argument("tracks", help="output track file (.jsonl)")
     parser.add_argument("--confirm-frames", type=int, default=CONFIRM_FRAMES,
-                        help="matched frames in a row before a new track is confirmed "
-                             f"(default {CONFIRM_FRAMES})")
+                        help="net hits (matched minus missed frames) before a new track is "
+                             f"confirmed (default {CONFIRM_FRAMES})")
+    parser.add_argument("--tentative-misses", type=int, default=TENTATIVE_MISSES,
+                        help="most missed frames in a row a tentative track survives; 0 drops it "
+                             f"on its first miss (default {TENTATIVE_MISSES})")
     parser.add_argument("--max-missing-frames", type=int, default=MAX_MISSING_FRAMES,
                         help="most missed frames in a row a searching track survives; "
                              "it is removed on the next miss "
@@ -44,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     tracker = Tracker(confirm_frames=args.confirm_frames,
+                      tentative_misses=args.tentative_misses,
                       max_missing_frames=args.max_missing_frames,
                       min_score=args.min_score,
                       search_gate=args.search_gate,

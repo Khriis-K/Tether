@@ -12,9 +12,9 @@ def box_at(x, y=50.0, size=SIZE):
     return (x, y, x + size, y + size)
 
 
-def run(xs):
+def run(xs, **settings):
     """One detection per frame, its box's left edge at each x."""
-    tracker = Tracker()
+    tracker = Tracker(**settings)
     return [tracker.update([Detection(box=box_at(x), score=0.9, cls=0)]) for x in xs]
 
 
@@ -102,7 +102,7 @@ def test_object_whose_box_shrinks_sharply_keeps_its_id():
 
 
 def test_far_away_detection_after_a_new_track_gets_a_new_id():
-    outputs = run([0.0, 500.0])
+    outputs = run([0.0, 500.0], tentative_misses=0)
 
     assert outputs[1][0].id != outputs[0][0].id
 

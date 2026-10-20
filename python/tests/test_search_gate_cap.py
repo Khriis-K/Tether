@@ -28,9 +28,9 @@ def det(box):
     return Detection(box=box, score=0.9, cls=0)
 
 
-def run(frames, search_gate_cap=CAP):
+def run(frames, search_gate_cap=CAP, **settings):
     tracker = Tracker(confirm_frames=CONFIRM, search_gate=SEARCH_GATE,
-                      search_gate_growth=SEARCH_GATE_GROWTH, search_gate_cap=search_gate_cap)
+                      search_gate_growth=SEARCH_GATE_GROWTH, search_gate_cap=search_gate_cap, **settings)
     return [tracker.update(dets) for dets in frames]
 
 
@@ -109,7 +109,7 @@ def test_tentative_tracks_dont_cap_the_gate():
     jumped = returned_at(RETURN_OFFSET)
     frames = [[det(box_at(X))] for _ in range(CONFIRM + 2)] + [[det(jumped)], [det(jumped)]]
 
-    outputs = run(frames)
+    outputs = run(frames, tentative_misses=0)
 
     original = outputs[CONFIRM + 1][0].id
     at_jumped = [t for t in outputs[-1] if t.box == jumped]

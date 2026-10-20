@@ -46,9 +46,12 @@ Detections scored at least `min_score` are high; those above LOW_SCORE but below
 the rest are dropped. Detection files can be saved unfiltered and each tracker
 picks its own cutoff.
 
-Lifecycle, counted in frames: a new track is "tentative" until it has matched
-`confirm_frames` frames in a row, then "tracked". A tentative track that misses
-a frame is dropped, so one-frame false detections never get a confirmed ID. A
+Lifecycle, counted in frames: a new track is "tentative" until its net hits
+(frames matched minus frames missed) reach `confirm_frames`, then "tracked". A
+tentative track survives `tentative_misses` missed frames in a row and is dropped
+on the next, so one deleted box early on doesn't start yet another ID, while a
+one-frame false detection still never gets a confirmed ID: its net hits never
+pass 1. With `tentative_misses` 0 it takes `confirm_frames` hits in a row. A
 tracked track that misses is "searching": it keeps predicting, and can still be
 matched, until it has missed more than `max_missing_frames` frames in a row.
 Each missed frame its velocity is multiplied by `coast_damping` before the
@@ -68,7 +71,8 @@ from tether.kalman import BoxFilter
 from tether.matching import MIN_IOU, center_distance, match, match_by_distance
 
 PATH_LENGTH = 30  # box centers kept per track for trails
-CONFIRM_FRAMES = 3  # matched frames in a row before a new track is confirmed
+CONFIRM_FRAMES = 3  # net hits (matched minus missed frames) before a new track is confirmed
+TENTATIVE_MISSES = 1  # missed frames in a row a tentative track survives
 MAX_MISSING_FRAMES = 30  # missed frames in a row a confirmed track survives
 MIN_SCORE = 0.25  # lowest detector confidence the tracker uses (Ultralytics' default; untuned)
 # The low-score pass, with ByteTrack's published values (untuned):
@@ -98,6 +102,7 @@ class _TrackState:
     motion: BoxFilter
     path: deque[Point] = field(default_factory=lambda: deque(maxlen=PATH_LENGTH))
     hits: int = 0  # detections matched so far, counting the first
+    misses: int = 0  # frames missed while tentative
     confirmed: bool = False
     frames_since_seen: int = 0
 
@@ -105,7 +110,7 @@ class _TrackState:
         self.box = box
         self.hits += 1
         self.frames_since_seen = 0
-        self.confirmed = self.confirmed or self.hits >= confirm_frames
+        self.confirmed = self.confirmed or self.net_hits >= confirm_frames
         self.path.append(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2))
 
     def take_over(self, other: "_TrackState") -> None:
@@ -113,6 +118,10 @@ class _TrackState:
         self.motion = other.motion
         self.hits += other.hits
         self.path.extend(other.path)
+
+    @property
+    def net_hits(self) -> int:
+        return self.hits - self.misses
 
     @property
     def status(self) -> str:
@@ -134,6 +143,7 @@ class _TrackState:
 
 class Tracker:
     def __init__(self, confirm_frames: int = CONFIRM_FRAMES,
+                 tentative_misses: int = TENTATIVE_MISSES,
                  max_missing_frames: int = MAX_MISSING_FRAMES,
                  min_score: float = MIN_SCORE, search_gate: float = SEARCH_GATE,
                  search_gate_growth: float = SEARCH_GATE_GROWTH,
@@ -141,6 +151,7 @@ class Tracker:
                  coast_damping: float = COAST_DAMPING, merge_reach: float = MERGE_REACH,
                  merge_reach_growth: float = MERGE_REACH_GROWTH) -> None:
         self._confirm_frames = confirm_frames
+        self._tentative_misses = tentative_misses
         self._max_missing_frames = max_missing_frames
         self._min_score = min_score
         self._search_gate = search_gate
@@ -173,7 +184,7 @@ class Tracker:
                                        high_allowed, pairs)
         pairs += self._match_unmatched(lambda t: t.hits == 1, _by_one_hit_distance, detections,
                                        high_allowed, pairs)
-        pairs = self._merge_duplicates(pairs, detections)
+        pairs, merged_away = self._merge_duplicates(pairs, detections)
 
         survivors = []
         for ti, di in pairs:
@@ -182,11 +193,14 @@ class Tracker:
             track.observe(detections[di].box, self._confirm_frames)
             survivors.append(track)
 
-        matched_tracks = {ti for ti, _ in pairs}
+        matched_tracks = {ti for ti, _ in pairs} | merged_away
         for ti, track in enumerate(self._tracks):
             if ti not in matched_tracks:
                 track.frames_since_seen += 1
-                if track.confirmed and track.frames_since_seen <= self._max_missing_frames:
+                if not track.confirmed:
+                    track.misses += 1
+                limit = self._max_missing_frames if track.confirmed else self._tentative_misses
+                if track.frames_since_seen <= limit:
                     survivors.append(track)
 
         matched = {di for _, di in pairs}
@@ -224,34 +238,38 @@ class Tracker:
         return min(distance, self._search_gate_cap * nearest)
 
     def _merge_duplicates(self, pairs: list[tuple[int, int]],
-                          detections: list[Detection]) -> list[tuple[int, int]]:
+                          detections: list[Detection]) -> tuple[list[tuple[int, int]], set[int]]:
         """Hand each pair that would confirm a tentative track to an older track it duplicates.
 
+        Returns the new pairs and the tentative tracks merged away, which are
+        dropped rather than counted as missing a frame.
+
         Runs before any pair is applied, so every box is still this frame's
-        prediction and the tentative tracks don't count toward the cap. The
-        older ID survives without comparing ages: a tentative track is dropped
-        on its first miss, so it is younger than any track that has already
-        been confirmed and then missed. With confirm_frames 1 a track is born
-        confirmed, so nothing is ever merged.
+        prediction and the tentative tracks don't count toward the cap. Only an
+        older track takes over: a tentative track that survives misses can
+        outlive a track born and confirmed after it, and the older ID is the
+        one to keep. With confirm_frames 1 a track is born confirmed, so
+        nothing is ever merged.
         """
         unmatched = set(range(len(self._tracks))) - {ti for ti, _ in pairs}
-        merged = []
+        merged, merged_away = [], set()
         for ti, di in pairs:
             new, box = self._tracks[ti], detections[di].box
-            if not new.confirmed and new.hits + 1 >= self._confirm_frames:
+            if not new.confirmed and new.net_hits + 1 >= self._confirm_frames:
                 reachable = [(center_distance(self._tracks[oi].motion.box, box), oi) for oi in unmatched
-                             if self._is_duplicate_of(self._tracks[oi], new.cls, box)]
+                             if self._is_duplicate_of(self._tracks[oi], new, box)]
                 if reachable:
                     _, oi = min(reachable)
                     unmatched.remove(oi)
                     self._tracks[oi].take_over(new)
+                    merged_away.add(ti)
                     ti = oi
             merged.append((ti, di))
-        return merged
+        return merged, merged_away
 
-    def _is_duplicate_of(self, old: _TrackState, cls: int, box: Box) -> bool:
-        """Whether a new track confirmed on `box` is `old`'s object under a younger ID."""
-        return (old.confirmed and old.cls == cls and _same_size(old.box, box)
+    def _is_duplicate_of(self, old: _TrackState, new: _TrackState, box: Box) -> bool:
+        """Whether `new`, confirmed on `box`, is `old`'s object under a younger ID."""
+        return (old.confirmed and old.id < new.id and old.cls == new.cls and _same_size(old.box, box)
                 and center_distance(old.motion.box, box) <= self._capped(old, self._reach(old)))
 
     def _by_search_gate(self, tracks: list[_TrackState], boxes: list[Box],
