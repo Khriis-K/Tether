@@ -45,7 +45,7 @@ The habits these stories taught, in the order you'd reach for them:
 3. **Change one thing at a time.** When two systems differ, ablate. The obvious suspect is often wrong. *([Tether vs. ByteTrack](#tether-made-470-more-id-switches-than-bytetrack-22-23))*
 4. **Compare each stage to its best possible version.** The stage that looks weak may already be at its limit, and the real loss may be somewhere else. *([Losing the drone](#tether-found-the-drone-but-kept-losing-its-id-8-29))*
 5. **Test on a benchmark that can show the cost.** A change tuned on one dataset needs a second one where it can fail, checked per video, not just in total. *([Drones vs. crowds](#the-fix-for-drones-broke-crowds-29-35))*
-6. **Judge by the outcome, not a stand-in.** A better intermediate number doesn't always mean a better result. *([Damping](#better-predictions-didnt-mean-more-re-matches-30))*
+6. **Judge by the outcome, not a stand-in.** A better intermediate number doesn't always mean a better result. *([Damping](#better-predictions-didnt-mean-more-re-matches-30); [fewer new IDs](#fewer-new-ids-same-score-31))*
 7. **Write the ceiling next to the target.** If the best possible score is below the target, tuning can't get there. *([Two IDs at once](#the-drone-held-two-ids-at-once-36-33))*
 8. **Count the failure on real data before fixing it.** A scripted scene shows a failure can happen, not how often. *([Stopping one swap](#stopping-one-swap-cost-more-than-it-saved-37))*
 
@@ -180,6 +180,17 @@ See the [edge rule](CONCEPTS.md#edge-rule-tried-shelved) and `docs/benchmarks/ed
 
 **Lesson:** count how often a failure happens on real data before fixing it. A scripted scene shows that a failure can happen, not how often. And a fix that trades a rare error for a common one is a loss, even when its own test passes.
 
+### Fewer new IDs, same score (#31)
+**In two sentences:** at 20% deletion, hundreds of new tracks died just because one of their first boxes was deleted, so we let a new track survive one miss. It cut the IDs handed out by a fifth, but ID kept didn't move, and MOT17 at 640 got slightly worse, so we shelved it.
+
+**Problem:** a new track needed 3 hits in a row. At 20% deletion, one deleted box in its first frames dropped it, and the next detection started yet another ID.
+
+**How we found the size of it:** we measured first. On Anti-UAV val at 20% deletion, 637 new tracks died only because their box was deleted, against 15 confirmed tracks that expired. By the issue's own test, that was big enough to build.
+
+**What we did:** a [leaky counter](CONCEPTS.md#leaky-counter-tried-shelved): a new track survives one miss and is confirmed on hits minus misses. New IDs fell from 1925 to 1508, but ID kept went from 85.3% to 85.2%. Two things ate the gain. A miss costs a whole hit, so surviving one saves at most a frame. And the [duplicate-track merge](CONCEPTS.md#duplicate-track-merge) was already giving the drone its old ID back, so the saved IDs were ones nothing scored. MOT17 at 640 lost 0.46 HOTA. We didn't find why, and false tracks barely changed (93 → 95). See `docs/benchmarks/tentative-miss.md`.
+
+**Lesson:** a count that goes down isn't a score that goes up. Before building, ask whether the thing you're counting actually costs the metric, here whether a dying new track cost an ID that was scored. Also, mutation-testing a file in place while benchmarks import it can change what the benchmarks run, so benchmark a frozen copy.
+
 ---
 
 ## What didn't work
@@ -200,6 +211,7 @@ Each of these was measured, not guessed, and the write-ups have the tables. Inte
 - **Reshaping the search gate (#29).** We tried the gate on tracks tracked last frame too, the gate after tentative tracks, distance per axis, and a gate scaled by speed. None fixed the MOT17 cost. The speed-scaled one kept MOT17 flat but lost most of the Anti-UAV gain. See `docs/benchmarks/antiuav-search-gate.md`.
 - **Velocity damping (#30).** It's in the code but off by default: without the gate it hurts recovery, and with the cap it adds ID switches at 640. See `docs/benchmarks/antiuav-coast-damping.md`.
 - **The edge rule (#37).** Blocking the gate and merge for tracks last seen at the frame edge fixed a scripted sparse-scene swap. It also cost Anti-UAV val about 1 point of ID kept (85.3% → 84.3% at 20% deletion) and regressed MOT17-04 at 1280×736. A velocity-gated version fixed MOT17-04 only with a threshold fit to two samples. See `docs/benchmarks/edge-rule.md`.
+- **Letting new tracks survive a miss (#31).** A leaky counter (survive one miss, confirm on hits minus misses) cut new IDs on Anti-UAV val from 1925 to 1508 at 20% deletion, but ID kept went from 85.3% to 85.2%. MOT17 at 640 lost 0.46 HOTA (33.13 → 32.67) for a reason we didn't find. See `docs/benchmarks/tentative-miss.md`.
 - **Bigger detector models at 640.** YOLO26m found 0% of 50–100 px people on MOT17-04, the same as the nano model. See ADR 0002.
 
 ---

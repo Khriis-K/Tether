@@ -47,6 +47,13 @@ The states a track moves through:
 
 **Gotcha:** "30 frames" is 1 second at 30 FPS but only half a second at 60 FPS. The Anti-UAV goal of recovering 1-second gaps needs the limit set from each clip's frame rate, not left at the default.
 
+### Leaky counter (tried, shelved)
+A softer confirmation rule for new tracks: instead of needing N hits in a row, a tentative track keeps a running count that goes up on each hit and down on each miss, and is confirmed when the count reaches N. A track can then ride out a missed frame, while a one-off false detection still never builds up enough hits. [Norfair](https://github.com/tryolabs/norfair) uses one.
+
+**In Tether:** tried for #31 and not merged (code on the branch `issue-31-tentative-miss-experiment`). A tentative track survived one miss and confirmed on net hits (hits minus misses). It cut the new IDs handed out on Anti-UAV by a fifth, but ID kept didn't move (85.3% → 85.2% at 20% deletion), and MOT17 at 640 lost 0.46 HOTA. See `docs/benchmarks/tentative-miss.md`.
+
+**Gotcha:** if a miss costs a whole hit, surviving one is worth at most one frame. Hit, miss, hit, hit, hit confirms on the same frame as a fresh track started at the second hit. And fewer IDs handed out isn't the same as a better score: the [duplicate-track merge](#duplicate-track-merge) already gave the drone back its old ID, so the IDs this saved were ones nothing scored.
+
 ---
 
 ## Matching & motion
