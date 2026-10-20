@@ -47,6 +47,7 @@ The habits these stories taught, in the order you'd reach for them:
 5. **Test on a benchmark that can show the cost.** A change tuned on one dataset needs a second one where it can fail, checked per video, not just in total. *([Drones vs. crowds](#the-fix-for-drones-broke-crowds-29-35))*
 6. **Judge by the outcome, not a stand-in.** A better intermediate number doesn't always mean a better result. *([Damping](#better-predictions-didnt-mean-more-re-matches-30))*
 7. **Write the ceiling next to the target.** If the best possible score is below the target, tuning can't get there. *([Still open](#still-open-the-drone-holds-two-ids-at-once-36-33))*
+8. **Count the failure on real data before fixing it.** A scripted scene shows a failure can happen, not how often. *([Stopping one swap](#stopping-one-swap-cost-more-than-it-saved-37))*
 
 ---
 
@@ -160,6 +161,23 @@ Roughly in the order we hit them. Each one opens with a two-sentence version to 
 
 **Lesson so far:** write down the ceiling next to the target. If the ceiling is below the target, no amount of tuning will reach it.
 
+### Stopping one swap cost more than it saved (#37)
+**In two sentences:** in a nearly empty scene, a person who walked out of frame could hand their ID to a newcomer, so we tried an "edge rule": a track last seen at the frame edge never gives its ID away. It fixed the scripted scene, but on real data the swap was rare and the rule cost about 1 point of Anti-UAV ID kept, so we shelved it.
+
+**Problem:** the gate and the merge are measured in box sizes. Around a big, close-up box they reach across most of the frame, and with nobody else in view the [nearest-track cap](CONCEPTS.md#nearest-track-cap) never binds. A scripted webcam scene swapped IDs for every gap from 0 to 29 frames.
+
+**How we found the cost:** we measured before deciding.
+- **MOT17 ground truth:** only 23 of 194 risky disappear/appear pairs happen at the edge. The rest are mid-frame, where the rule can't help.
+- **Real webcam clip:** the size check already stopped the swap at the demo's input size.
+- **Anti-UAV val:** ID kept fell from 85.3% to 84.3% at 20% deletion.
+- **MOT17-04 at 1280×736:** regressed, because the rule blocked two *correct* re-matches of people standing at the top edge. Adding "and moving out" fixed MOT17-04 only with a threshold read off those two samples.
+
+See the [edge rule](CONCEPTS.md#edge-rule-tried-shelved) and `docs/benchmarks/edge-rule.md`.
+
+**What we did:** didn't merge it. The code stays on a branch, and the swap is listed under the limitations below. Telling "the same person came back" from "someone new" needs [appearance re-ID](CONCEPTS.md#appearance-re-identification-re-id), which a motion rule can't supply.
+
+**Lesson:** count how often a failure happens on real data before fixing it. A scripted scene shows that a failure can happen, not how often. And a fix that trades a rare error for a common one is a loss, even when its own test passes.
+
 ---
 
 ## What didn't work
@@ -179,6 +197,7 @@ Each of these was measured, not guessed, and the write-ups have the tables. Inte
 - **OC-SORT's three add-ons (#25).** OCR's gains swung by video (+2.5 HOTA on MOT17-02, −2.1 on MOT17-09), OCM was slightly negative, and ORU was near zero. None went into the tracker. See `docs/benchmarks/mot17-lowscore-ocsort-ablations.md`.
 - **Reshaping the search gate (#29).** We tried the gate on tracks tracked last frame too, the gate after tentative tracks, distance per axis, and a gate scaled by speed. None fixed the MOT17 cost. The speed-scaled one kept MOT17 flat but lost most of the Anti-UAV gain. See `docs/benchmarks/antiuav-search-gate.md`.
 - **Velocity damping (#30).** It's in the code but off by default: without the gate it hurts recovery, and with the cap it adds ID switches at 640. See `docs/benchmarks/antiuav-coast-damping.md`.
+- **The edge rule (#37).** Blocking the gate and merge for tracks last seen at the frame edge fixed a scripted sparse-scene swap. It also cost Anti-UAV val about 1 point of ID kept (85.3% → 84.3% at 20% deletion) and regressed MOT17-04 at 1280×736. A velocity-gated version fixed MOT17-04 only with a threshold fit to two samples. See `docs/benchmarks/edge-rule.md`.
 - **Bigger detector models at 640.** YOLO26m found 0% of 50–100 px people on MOT17-04, the same as the nano model. See ADR 0002.
 
 ---
@@ -191,5 +210,6 @@ Know these before someone asks.
 - **The ByteTrack baseline isn't tuned to these detections either.** It's Ultralytics' BYTETracker with Ultralytics' defaults for YOLO detectors, not the paper's MOT17 settings, which assumed a detector trained on MOT17. Both trackers read the same detections, so the comparison is fair, but neither is at its best possible score.
 - **At 640, Tether is slightly behind ByteTrack** on HOTA (0.4) and IDF1 (0.3). The cause hasn't been found.
 - **Anti-UAV is well short of its target.** ID kept at 20% deletion is 59.9% on val against a 95% target, and the reachable ceiling with a 30-frame search is 94.2% on test (#33, #36).
+- **Sparse scenes can swap IDs.** With nobody else in view, a person who walks out can hand their ID to a same-size newcomer within about a second. The gate and merge reach far around a big box, and the cap only binds in a crowd. The size check catches some cases, and on MOT17 most risky pairs are mid-frame, not at the edge. Fixing it properly needs appearance re-ID (#37, `docs/benchmarks/edge-rule.md`).
 - **Anti-UAV tests the tracker, not the whole system.** Detections are the labeled boxes with deletions added, not a real detector's output.
 - **No speed claims yet.** Everything so far runs in Python on CPU ONNX Runtime. The C++, TensorRT and CUDA work, and its before-and-after numbers, hasn't been built yet.

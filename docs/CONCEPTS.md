@@ -122,9 +122,21 @@ When a lost object reappears too far from its track's prediction for the gate, i
 
 **In Tether:** `--merge-reach` / `--merge-reach-growth`, 10 + 1 box sizes per missed frame by default, capped like the gate. On Anti-UAV val it lifts ID kept at 20% deletion from 59.9% to about 85%, and MOT17 doesn't move: in a crowd the cap holds the reach down to a fraction of the distance to the nearest neighbor.
 
-**Gotcha:** the reach is far wider than the gate, because the drone often reappears 5–10 box sizes from its prediction. That is safe in a crowd (the cap) and on a single-target benchmark (nothing to get wrong), but not in between. In a sparse scene, a lone person who walks out can hand their ID to a same-size newcomer who walks in elsewhere. A scripted webcam scene showed the search gate already does this for gaps of 5–29 frames, because a box-size gate around a big, close-up box spans most of the frame; the merge adds the case where the newcomer arrives on the very next frame.
+**Gotcha:** the reach is far wider than the gate, because the drone often reappears 5–10 box sizes from its prediction. That is safe in a crowd (the cap) and on a single-target benchmark (nothing to get wrong), but not in between. In a sparse scene, a lone person who walks out can hand their ID to a same-size newcomer who walks in elsewhere. A scripted webcam scene showed the search gate already does this for gaps of 5–29 frames, because a box-size gate around a big, close-up box spans most of the frame; the merge adds the case where the newcomer arrives on the very next frame. The [edge rule](#edge-rule-tried-shelved) was tried against this and shelved.
 
 **Gotcha:** center distance ignores size. A big box walking in front of a smaller, occluded track can have its center inside that track's gate, which IoU would never allow. Tether's gate also requires the heights to be within 1.5 times of each other, against the track's last *observed* box: a coasted prediction's size drifts with the size velocity (MOT17-09 had predictions 1211 px tall, and one with negative height).
+
+### Edge rule (tried, shelved)
+A track whose last box touched the frame edge most likely left the scene, so it shouldn't hand its ID to whoever appears next. The rule blocks only the distance-based re-matches (the gate and the merge), so IoU still keeps a briefly missed object at the edge.
+
+**In Tether:** tried for #37 and not merged (code on the branch `issue-37-edge-rule-experiment`). It fixed the scripted walk-out/walk-in swap, but it cost Anti-UAV val about 1 point of ID kept and regressed MOT17-04 at 1280×736. On real data the swap it targets was rare. See `docs/benchmarks/edge-rule.md`.
+
+**Gotcha:** touching the edge isn't the same as leaving. On MOT17-04 the rule blocked two correct re-matches of people standing partly cut off at the top edge. And without appearance (below), the same person walking back in looks exactly like a newcomer, so the rule gives both a new ID.
+
+### Appearance re-identification (re-ID)
+Telling objects apart by what they look like, usually from an embedding a neural network computes for each box crop, instead of only by where the box is and how it moves. It's what lets a tracker recognize the same person coming back after leaving the frame, which no motion rule can do.
+
+**In Tether:** not built. Tether is motion-only, which keeps it fast and simple to port to C++. #37 named re-ID as the alternative if motion rules couldn't stop sparse-scene swaps, and kept it out of scope.
 
 ### Velocity damping while coasting
 A constant-velocity filter coasts a lost track at its last velocity, which overshoots whenever the object turns. Damping multiplies the velocity by a factor below 1 each missed frame, so the prediction slows to a stop instead of running off. 0 is the constant-position null: the box is frozen where it was last predicted.
