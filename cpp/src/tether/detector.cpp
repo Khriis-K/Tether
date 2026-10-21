@@ -6,6 +6,10 @@
 #include <stdexcept>
 #include <string>
 
+#ifdef TETHER_HAS_TENSORRT
+#include "tether/tensorrt_detector.hpp"
+#endif
+
 namespace tether {
 
 std::vector<Detection> decode(const std::vector<float>& rows, const PreparedFrame& p, double min_score) {
@@ -78,6 +82,27 @@ std::vector<Detection> OnnxDetector::detect(const PreparedFrame& prepared) {
   const float* data = outputs[0].GetTensorData<float>();
   std::vector<float> rows(data, data + outputs[0].GetTensorTypeAndShapeInfo().GetElementCount());
   return decode(rows, prepared, min_score_);
+}
+
+bool tensorrt_built() {
+#ifdef TETHER_HAS_TENSORRT
+  return true;
+#else
+  return false;
+#endif
+}
+
+std::filesystem::path engine_for_model(const std::filesystem::path& model) {
+  return std::filesystem::path(model).replace_extension(".engine");
+}
+
+std::unique_ptr<Detector> make_detector(Runtime runtime, const std::filesystem::path& model, double min_score) {
+  if (runtime == Runtime::onnxruntime) return std::make_unique<OnnxDetector>(model, min_score);
+#ifdef TETHER_HAS_TENSORRT
+  return std::make_unique<TensorRtDetector>(engine_for_model(model), min_score);
+#else
+  throw std::runtime_error("this build has no TensorRT runtime; configure CMake with -DTensorRT_ROOT=<TensorRT folder>");
+#endif
 }
 
 }  // namespace tether

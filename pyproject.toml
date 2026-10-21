@@ -27,6 +27,7 @@ tether-antiuav = "tether.antiuav:main"
 tether-parity = "tether.parity:main"
 tether-pipeline-compare = "tether.pipeline_compare:main"
 tether-mode-compare = "tether.mode_compare:main"
+tether-runtime-compare = "tether.runtime_compare:main"
 
 [tool.setuptools.packages.find]
 where = ["python"]

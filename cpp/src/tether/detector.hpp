@@ -52,4 +52,19 @@ class OnnxDetector : public Detector {
   double min_score_;
 };
 
+// Which runtime runs the model: ONNX Runtime on the CPU, or TensorRT on the GPU.
+enum class Runtime { onnxruntime, tensorrt };
+
+// Whether this build has the TensorRT runtime (CMake was given TensorRT_ROOT).
+bool tensorrt_built();
+
+// The TensorRT engine built from `model`: the same path ending in .engine.
+std::filesystem::path engine_for_model(const std::filesystem::path& model);
+
+// The detector for `model` on `runtime`; TensorRT loads engine_for_model(model).
+// Throws std::runtime_error when the model or engine can't be loaded, or for
+// TensorRT in a build without it.
+std::unique_ptr<Detector> make_detector(Runtime runtime, const std::filesystem::path& model,
+                                        double min_score = DETECTOR_MIN_SCORE);
+
 }  // namespace tether

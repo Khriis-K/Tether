@@ -80,6 +80,33 @@ else()
   set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so)
 endif()
 
+# The optional TensorRT runtime (--runtime tensorrt). NVIDIA's download needs a
+# login, so it isn't fetched: unpack a TensorRT release and point TensorRT_ROOT
+# at it. Left empty, everything builds without it. Its CUDA runtime is linked
+# statically, so whichever CUDA DLLs come first on the PATH don't matter; pass
+# CUDAToolkit_ROOT to pick the toolkit TensorRT was built for.
+set(TensorRT_ROOT "" CACHE PATH "TensorRT release folder (include/, lib/, bin/); empty: build without TensorRT")
+if(TensorRT_ROOT)
+  find_package(CUDAToolkit REQUIRED)
+  find_path(TensorRT_INCLUDE_DIR NvInferRuntime.h PATHS ${TensorRT_ROOT}/include NO_DEFAULT_PATH REQUIRED)
+  find_library(TensorRT_LIBRARY NAMES nvinfer_11 nvinfer_10 nvinfer PATHS ${TensorRT_ROOT}/lib NO_DEFAULT_PATH
+    REQUIRED)
+  find_program(TensorRT_TRTEXEC trtexec PATHS ${TensorRT_ROOT}/bin NO_DEFAULT_PATH REQUIRED)
+  add_library(tensorrt SHARED IMPORTED)
+  set_target_properties(tensorrt PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${TensorRT_INCLUDE_DIR})
+  if(WIN32)
+    # The DLL is copied next to our programs with ONNX Runtime's (about 400 MB, once per build folder).
+    get_filename_component(trt_lib_name ${TensorRT_LIBRARY} NAME_WE)
+    find_file(TensorRT_DLL ${trt_lib_name}.dll PATHS ${TensorRT_ROOT}/bin NO_DEFAULT_PATH REQUIRED)
+    set_target_properties(tensorrt PROPERTIES IMPORTED_LOCATION ${TensorRT_DLL} IMPORTED_IMPLIB ${TensorRT_LIBRARY})
+  else()
+    set_target_properties(tensorrt PROPERTIES IMPORTED_LOCATION ${TensorRT_LIBRARY})
+  endif()
+  message(STATUS "TensorRT runtime: ${TensorRT_LIBRARY}, CUDA ${CUDAToolkit_VERSION}")
+else()
+  message(STATUS "TensorRT runtime: off (set TensorRT_ROOT to build it)")
+endif()
+
 # The stats panel's window: Dear ImGui drawn through OpenGL 3 in a GLFW window.
 # ImGui ships no CMake, so its sources are built here as one library.
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -173,8 +200,13 @@ target_include_directories(tether_pipeline PUBLIC src)
 target_link_libraries(tether_pipeline
   PUBLIC tether_core opencv_core opencv_imgproc opencv_imgcodecs opencv_videoio imgui
   PRIVATE onnxruntime)
+if(TensorRT_ROOT)
+  target_sources(tether_pipeline PRIVATE src/tether/tensorrt_detector.cpp)
+  target_compile_definitions(tether_pipeline PUBLIC TETHER_HAS_TENSORRT)
+  target_link_libraries(tether_pipeline PRIVATE tensorrt CUDA::cudart_static)
+endif()
 
-# Copies a target's runtime DLLs (ONNX Runtime, OpenCV's FFmpeg plugin) next to
+# Copies a target's runtime DLLs (ONNX Runtime, TensorRT, OpenCV's FFmpeg plugin) next to
 # it, so Windows loads ours and not the older onnxruntime.dll in System32.
 function(tether_copy_runtime_dlls target)
   if(WIN32)
@@ -234,6 +266,7 @@ if(TETHER_BUILD_TESTS)
     tests/test_pipeline_cli_outputs.cpp
     tests/test_pipeline_cli_screenshot.cpp
     tests/test_run_settings.cpp
+    tests/test_runtime_setting.cpp
     tests/test_search_gate.cpp
     tests/test_stream_writers.cpp
     tests/test_timing.cpp
@@ -245,6 +278,20 @@ if(TETHER_BUILD_TESTS)
     nlohmann_json::nlohmann_json GTest::gtest_main)
   target_compile_definitions(tether_tests PRIVATE TETHER_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx")
   tether_copy_runtime_dlls(tether_tests)
+  if(TensorRT_ROOT)
+    # The stand-in models' engines, built by trtexec when the model is newer.
+    target_sources(tether_tests PRIVATE tests/test_tensorrt_detector.cpp)
+    set(test_engines ${CMAKE_CURRENT_BINARY_DIR}/test-engines)
+    add_custom_command(OUTPUT ${test_engines}/fixed_736x1280.engine
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${test_engines}
+      COMMAND ${TensorRT_TRTEXEC} --onnx=${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx/fixed_736x1280.onnx
+        --saveEngine=${test_engines}/fixed_736x1280.engine --noTF32 --skipInference > ${test_engines}/trtexec.log
+      DEPENDS tests/onnx/fixed_736x1280.onnx
+      COMMENT "Building the stand-in model's TensorRT engine")
+    add_custom_target(tether_test_engines DEPENDS ${test_engines}/fixed_736x1280.engine)
+    add_dependencies(tether_tests tether_test_engines)
+    target_compile_definitions(tether_tests PRIVATE TETHER_TEST_ENGINES="${test_engines}")
+  endif()
   include(GoogleTest)
   gtest_discover_tests(tether_tests DISCOVERY_MODE PRE_TEST)
 

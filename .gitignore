@@ -7,3 +7,6 @@ models/
 results/
 data/
 cpp/build/
+# TensorRT engines: built per GPU and TensorRT version with trtexec (README.md, "TensorRT runtime")
+*.engine
+*.plan
