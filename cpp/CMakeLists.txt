@@ -204,6 +204,10 @@ if(TensorRT_ROOT)
   target_sources(tether_pipeline PRIVATE src/tether/tensorrt_detector.cpp)
   target_compile_definitions(tether_pipeline PUBLIC TETHER_HAS_TENSORRT)
   target_link_libraries(tether_pipeline PRIVATE tensorrt CUDA::cudart_static)
+  # NVTX (header-only, from the same toolkit) names each pipeline step on an
+  # Nsight Systems timeline; see docs/benchmarks/nsight-profile.md.
+  target_compile_definitions(tether_pipeline PRIVATE TETHER_HAS_NVTX)
+  target_link_libraries(tether_pipeline PRIVATE CUDA::nvtx3)
 endif()
 
 # Copies a target's runtime DLLs (ONNX Runtime, TensorRT, OpenCV's FFmpeg plugin) next to

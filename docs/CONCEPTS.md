@@ -331,7 +331,28 @@ Timing a single piece of code in isolation, away from everything around it, so i
 ### Profiling (Nsight Systems)
 Measuring where time actually goes before optimizing. Nsight Systems is NVIDIA's timeline profiler: it shows CPU threads, GPU kernels, and memory copies side by side.
 
-**In Tether:** the rule is to profile *before* writing the CUDA kernel, to prove frame prep is a real bottleneck instead of assuming it.
+**In Tether:** the rule is to profile *before* writing the CUDA kernel, to prove frame prep is a real bottleneck instead of assuming it. #15 did, with the `nsys` CLI on the parallel pipeline (`docs/benchmarks/nsight-profile.md`). At the shipped 640 input, prep was never the slowest stage: capture was. Inside TensorRT's detect, the GPU was idle most of the time, waiting on [kernel launches](#kernel-launch-overhead-and-cuda-graphs). `tools/nsight_steps.py` turns a capture's SQLite export into per-step and per-part numbers.
+
+**Gotcha:** the profiler changes what it measures. Tracing every CUDA call added 0.67–1.49 ms to TensorRT's detect step, enough to make detect the slowest stage on the Anti-UAV clip when, without the profiler, capture is. So the profile shows what's *inside* a step, and runs without the profiler show how long each step takes.
+
+### NVTX (named ranges on a profiler timeline)
+NVIDIA's tiny annotation API: push a named range when a piece of code starts and pop it when it ends, and Nsight Systems draws it as a labelled bar on that thread's timeline. With no profiler attached, the calls do nothing.
+
+**In Tether:** `StepRange` in `pipeline.cpp` marks capture, prep, detect, track and draw, in both pipeline modes. It's only compiled in with TensorRT (which brings the CUDA toolkit's header-only NVTX).
+
+**Gotcha:** libraries use NVTX too. TensorRT marks every layer, 27,383 NVTX events in a 100-frame trial run, so profile with `--nvtx-domain-include=default` to keep only your own ranges.
+
+### Kernel launch overhead (and CUDA graphs)
+Every GPU kernel is started by a call from the CPU, and each call costs microseconds. A model made of hundreds of small kernels can spend longer *launching* than the GPU spends running them, and the GPU sits idle in between. A CUDA graph records the whole sequence of launches once and replays it with one call.
+
+**In Tether:** TensorRT's YOLO26n engine launches 217 kernels per frame at 640. Profiled, the CPU took 5.81–6.10 ms to launch them while the GPU computed for 1.47–1.53 ms. `trtexec` on the same engine took 4.04–4.06 ms to enqueue without a graph and 0.028–0.029 ms with one. The launch time also explains TensorRT's wide P99: in the slowest 1% of frames, the kernels took the same time and the launches took about twice as long. The pipeline doesn't use a CUDA graph yet.
+
+**Gotcha:** "faster GPU" won't fix a launch-bound model. Detect barely grew from 640 to 1280×736 for exactly this reason: the kernels got slower, the launches didn't.
+
+### Busy share (finding the bottleneck stage)
+A stage's total working time divided by the run's wall time. In a pipeline where each stage has its own thread, the slowest stage is busy nearly all the time, and the others wait. FPS is set by that stage, so speeding up any other one changes nothing.
+
+**In Tether:** at 640 with TensorRT, capture was busy 99.2–99.8% and prep 22.2–64.7%, so a faster prep couldn't raise FPS. At 1280×736 on the Anti-UAV clip, prep was busy 99.1%: the bottleneck. `busy_share` in `tools/nsight_steps.py` computes it from a timing log or a profile.
 
 ---
 
