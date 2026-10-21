@@ -24,7 +24,7 @@ from pathlib import Path
 MODELS = Path(__file__).resolve().parent.parent / "models"
 MODEL_VARIANTS = ("n", "s", "m")
 SHIPPED = ("n", (736, 1280))  # model variant, (height, width): the default export (ADR 0003)
-UNSUFFIXED = ("n", (640, 640))  # the first shipped model, which keeps the name yolo26n.onnx
+FIRST_SHIPPED = ("n", (640, 640))  # YOLO26n at 640, shipped until ADR 0003: keeps the name yolo26n.onnx
 STRIDE = 32
 
 
@@ -42,7 +42,7 @@ def parse_size(text: str) -> tuple[int, int]:
 
 def output_name(model: str, size: tuple[int, int]) -> str:
     """yolo26n.onnx for YOLO26n at 640, else e.g. yolo26n_1280x736.onnx (width x height)."""
-    if (model, size) == UNSUFFIXED:
+    if (model, size) == FIRST_SHIPPED:
         return f"yolo26{model}.onnx"
     h, w = size
     return f"yolo26{model}_{w}x{h}.onnx"
@@ -65,7 +65,8 @@ def main(argv: list[str] | None = None) -> None:
     weights = Path(attempt_download_asset(MODELS / f"yolo26{args.model}.pt"))  # skipped if already there
     target = MODELS / output_name(args.model, args.size)
     # Ultralytics writes <weights-stem>.onnx next to the weights, which for yolo26n.pt is
-    # models/yolo26n.onnx, the 640 model. Exporting a copy in a scratch folder keeps models/ untouched until the move.
+    # models/yolo26n.onnx, the 640 model. Exporting a copy in a scratch folder keeps models/
+    # untouched until the move.
     with tempfile.TemporaryDirectory() as scratch:
         copy = Path(shutil.copy(weights, scratch))
         onnx_path = YOLO(str(copy)).export(format="onnx", imgsz=list(args.size), batch=1, dynamic=False,

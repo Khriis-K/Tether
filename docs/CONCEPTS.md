@@ -239,7 +239,7 @@ In Tether: both sit behind the same `Detector` interface, and `tether-pipeline -
 ### TensorRT engine
 What TensorRT turns an ONNX model into: a compiled plan (`.engine` or `.plan` file) holding the layers it fused and the GPU kernels it timed as fastest. Building one took 67–90 s for YOLO26n here; after that the pipeline only loads it.
 
-In Tether: built once per machine with `trtexec --onnx=models/yolo26n.onnx --saveEngine=models/yolo26n.engine --noTF32`, and loaded from next to the model (README, "TensorRT runtime").
+In Tether: built once per machine and input size with `trtexec --onnx=models/yolo26n_1280x736.onnx --saveEngine=models/yolo26n_1280x736.engine --noTF32` (the shipped model; `yolo26n.onnx`, the 640 model, the same way), and loaded from next to the model (README, "TensorRT runtime").
 
 Gotcha: an engine is tied to the GPU model, the TensorRT version and the input size it was built with. That's why engines stay out of git, and why each model × input size needs its own. An engine from another TensorRT version is refused when it loads (`tether-pipeline` then says to rebuild it); one built on a different GPU may load with only a warning, so treat engines as per-machine build output.
 
