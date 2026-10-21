@@ -250,9 +250,9 @@ Two separate choices. The **benchmark detection set** is what a tracker comparis
 - **Throughput:** how many frames per second come out (FPS).
 - **Latency:** how long one frame takes from camera to screen (end-to-end delay).
 
-They're different. A parallel pipeline can raise FPS without making any single frame faster, and can even add a little delay per frame.
+They're different. A parallel pipeline can raise FPS without making any single frame faster, and can add delay per frame, sometimes a lot.
 
-**In Tether:** the timing log stores each step's start and end time, not just how long it took, so both can be measured from one log. Frame time is the gap between frames finishing; delay is from a frame being captured to it being drawn. In the sequential pipeline they're nearly the same number. In the parallel one they split apart, and only timestamps can tell.
+**In Tether:** the timing log stores each step's start and end time, not just how long it took, so both can be measured from one log. Frame time is the gap between frames finishing; delay is from a frame being captured to it being drawn. In the sequential pipeline they're nearly the same number. In the parallel one they split apart, and only timestamps can tell. Measured (#14, one-frame queues, video files): FPS up 1.23–1.57×, and delay up from about 37 ms to 147–159 ms. That's a [Little's law](#littles-law) effect (`docs/benchmarks/parallel-pipeline.md`).
 
 **Gotcha:** the measured delay starts when the program has the frame. The camera's own sensor-to-USB delay comes before that and isn't counted, so a true camera-to-screen number is higher.
 
@@ -268,8 +268,23 @@ One way to compute a percentile: sort the values and pick the one at position �
 - **Sequential:** capture → prep → detect → track → draw, one frame at a time. Simple to debug, but every stage waits on the others.
 - **Parallel:** each stage runs on its own thread and works on a different frame at the same moment, like an assembly line. Throughput becomes limited by the *slowest single stage*, not the sum of all of them.
 
+**In Tether:** `tether-pipeline --pipeline parallel` (#14) runs capture, prep, detect and track on four threads, and draws on the main one, because a GLFW window has to be drawn on the thread that made it. Frames pass through FIFO queues, so the tracker still sees them in order: recordings with the tracks drawn came out byte-identical to sequential's on MOT17-09 and the Anti-UAV clip. The frame time settled at the detect time (about 33 ms), so the gain is capped at sequential frame time over detect time: 1.23× on the Anti-UAV clip, 1.57× on MOT17-04, where JPEG decoding had more to hide. On the webcam it took the camera's dropped frames from 129 to 0 in 300, with just 0.2 ms to spare per frame.
+
+**Gotcha:** overlapped steps compete for the same cores. Decoding ran up to twice as slow in parallel, because ONNX Runtime keeps its own threads busy during detect. It didn't matter here because decoding wasn't the bottleneck, but it would with a faster detector.
+
 ### Bounded queue & backpressure
 The buffers between pipeline stages have a fixed maximum size. If a slow stage falls behind, its input queue fills up and the faster stage before it has to wait. That pushback is **backpressure**. Without a limit, a fast producer would pile up frames forever, using more and more memory and adding more and more delay.
+
+**In Tether:** `BoundedQueue` (`cpp/src/tether/bounded_queue.hpp`) holds one frame between each pair of stages. Closing a queue is also how the parallel pipeline stops. A stage that reaches the end of the video closes its output, and the stages after it finish what's queued and stop too. A quit or an error closes every queue, which wakes any stage waiting on one.
+
+**Gotcha:** a bigger queue doesn't make anything faster once the slow stage always has its next frame ready. It only adds waiting. Going from two frames to one kept FPS and cut delay by about two detect times (#14).
+
+### Little's law
+In any steady system, *items inside = arrival rate × time each spends inside*. Turned around for a pipeline: **delay = frames in flight × frame time**. A full pipeline running at 30 FPS with 5 frames in flight has about 167 ms of delay, however fast each step is.
+
+**In Tether:** on a video file, the parallel pipeline's capture and prep run ahead of the detector until every queue before it is full, so about five frames are in flight (one held by capture, one queued, one in prep, one queued, one in detect). Five times a 33 ms frame predicts about 165 ms, and the measured delay was 147–159 ms. With two-frame queues, two more frames waited and delay rose by about two frame times. The webcam's delay was lower (83 ms) because capture can't run ahead of the camera (`docs/benchmarks/parallel-pipeline.md`).
+
+**Gotcha:** for a live camera, the fix for delay is to drop old frames rather than queue them, that is, to always detect the newest one. That trades smoothness for freshness, and Tether doesn't do it yet.
 
 ### Amdahl's law
 Speeding up one part of a job only helps in proportion to how much of the total time that part takes. If tracking is 5% of frame time, making it 10× faster saves at most about 4.5%.

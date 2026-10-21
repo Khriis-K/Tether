@@ -49,6 +49,7 @@ struct Options {
   std::string source;
   std::optional<std::string> model, dump, timing, record, screenshot;
   bool show = false;
+  PipelineMode pipeline = PipelineMode::sequential;
   std::string model_size = "n";
   double det_min_score = DETECTOR_MIN_SCORE;
   long long max_frames = 0;  // 0: no limit
@@ -108,11 +109,13 @@ std::filesystem::path model_for_size(const std::string& size) {
   return std::filesystem::path("models") / ("yolo26" + size + ".onnx");
 }
 
-Settings run_settings(const std::filesystem::path& model) {
+Settings run_settings(const std::filesystem::path& model, PipelineMode mode) {
+  // Parallel: capture, prep, detect and track threads, and draw on the main one.
+  // ONNX Runtime's own threads inside detect aren't counted in either mode.
   return {{"model", model.filename().string()},
           {"runtime", "ONNX Runtime (CPU)"},
           {"frame prep", "CPU"},
-          {"pipeline", "sequential, 1 thread"}};
+          {"pipeline", mode == PipelineMode::parallel ? "parallel, 5 threads" : "sequential, 1 thread"}};
 }
 
 int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, std::ostream& err) {
@@ -132,6 +135,14 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
                            [&](const std::string& v) { o.det_min_score = parse_double(v); }}},
       {"--timing", {"LOG", "timing log to write (.jsonl; default results/timing-cpp-<date>-<time>.jsonl)",
                     [&](const std::string& v) { o.timing = v; }}},
+      {"--pipeline", {"MODE", "sequential (default): one step at a time; or parallel: capture, prep, detect and track "
+                              "each on their own thread, overlapping on different frames, with draw on the main "
+                              "thread. Same tracks either way",
+                      [&](const std::string& v) {
+                        if (v == "sequential") o.pipeline = PipelineMode::sequential;
+                        else if (v == "parallel") o.pipeline = PipelineMode::parallel;
+                        else throw std::invalid_argument(v);
+                      }}},
       {"--max-frames", {"N", "stop after N frames (default: run to the end, or until Ctrl-C)",
                         [&](const std::string& v) { o.max_frames = parse_positive(v); }}},
       {"--show", {"", "show the tracks in a window, with a live stats panel beside the video: Space pauses and resumes, q or Esc quits. While paused "
@@ -203,6 +214,10 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     err << usage() << "tether-pipeline: error: --show and --record track and draw, which --dump skips\n";
     return 2;
   }
+  if (o.dump && o.pipeline == PipelineMode::parallel) {
+    err << usage() << "tether-pipeline: error: --pipeline parallel runs the tracking stages, which --dump skips\n";
+    return 2;
+  }
 
   try {
     std::filesystem::path model = o.model ? std::filesystem::path(*o.model) : model_for_size(o.model_size);
@@ -243,7 +258,7 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     std::vector<Track> on_screen;
     std::unique_ptr<GuiScreen> screen;
     if (o.show)
-      screen = std::make_unique<GuiScreen>("Tether", [&] { return PanelData{stats.summary(), on_screen, run_settings(model)}; });
+      screen = std::make_unique<GuiScreen>("Tether", [&] { return PanelData{stats.summary(), on_screen, run_settings(model, o.pipeline)}; });
     cv::VideoWriter recording;  // opened on the first frame, once its size is known
     Recorder recorder;
     if (o.record) {
@@ -262,7 +277,8 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
       bool keep_going = view ? view->show(frame, tracks) : true;
       return keep_going && more();
     };
-    run_sequential(*source, prep, detector, tracker, draw, steady_clock_ms, [&](const StepTimes& t) {
+    auto run = o.pipeline == PipelineMode::parallel ? run_parallel : run_sequential;
+    run(*source, prep, detector, tracker, draw, steady_clock_ms, [&](const StepTimes& t) {
       log.write(t);
       stats.add(t);
       if (t.dropped) dropped = dropped.value_or(0) + *t.dropped;

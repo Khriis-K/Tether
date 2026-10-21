@@ -210,6 +210,7 @@ if(TETHER_BUILD_TESTS)
   enable_testing()
   add_executable(tether_tests
     tests/test_assignment.cpp
+    tests/test_bounded_queue.cpp
     tests/test_cli.cpp
     tests/test_coast_damping.cpp
     tests/test_detector.cpp
@@ -225,9 +226,11 @@ if(TETHER_BUILD_TESTS)
     tests/test_matching.cpp
     tests/test_merge.cpp
     tests/test_panel.cpp
+    tests/test_parallel_pipeline.cpp
     tests/test_pipeline.cpp
     tests/test_pipeline_cli.cpp
     tests/test_pipeline_cli_hud.cpp
+    tests/test_pipeline_cli_mode.cpp
     tests/test_pipeline_cli_outputs.cpp
     tests/test_pipeline_cli_screenshot.cpp
     tests/test_run_settings.cpp
