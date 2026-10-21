@@ -232,7 +232,7 @@ def test_a_sequence_with_missing_images_is_refused_and_leaves_no_detections(tmp_
     with pytest.raises(ValueError, match="seqinfo.ini says 10"):
         evaluate(mot17_dir, tmp_path / "work", TETHER, "tether", GroundTruthDetector())
 
-    assert list((tmp_path / "work" / "detections" / "yolo26n").iterdir()) == []
+    assert list((tmp_path / "work" / "detections" / "yolo26n_1280x736").iterdir()) == []
 
 
 def test_each_detector_gets_its_own_saved_detections(tmp_path, mot17_dir):

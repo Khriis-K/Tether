@@ -101,7 +101,7 @@ The runtimes agree within #16's tolerance (scores within 0.00032), yet HOTA move
 - **ADR 0002's split goes away:** the benchmark detection set (n at 1280×736) and the shipped detector would be the same model.
 
 What it costs and what's left open:
-- **The spec's targets were written for n at 640.** If this ships, the SPEC "Targets" line, `DEFAULT_MODEL`/`--model-size` and ADR 0002 need updating. That isn't done here, because the choice is the user's.
+- **The spec's targets were written for n at 640.** If this ships, the SPEC "Targets" line, `DEFAULT_MODEL`/`--model-size` and ADR 0002 need updating. That isn't done here, because the choice is the user's. *Update (2026-10-21): done, in ADR 0003 (`docs/adr/0003-ship-yolo26n-1280x736.md`), after #17's CUDA prep took this row to 195.45–195.86 FPS.*
 - **s at 1280×736 is +3.30 HOTA, but runs 108.89–110.06 FPS** against 124.82–126.18, bounded by detect, not prep. Only a faster detect gets it under the targets. An FP16 export is the obvious candidate (#16 noted TensorRT 11 needs an FP16 ONNX for that). It's untried, and it would need its own agreement check.
 - **n at 640 stays the fastest** (186.27 FPS in its fast round, P99 6.77 ms) if the margin above ever matters more than accuracy.
 

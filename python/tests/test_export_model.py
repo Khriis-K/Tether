@@ -34,13 +34,18 @@ def test_the_output_name_includes_model_and_input_size():
 
 
 def test_the_default_export_is_the_shipped_model():
+    assert export_model.output_name(*export_model.SHIPPED) == "yolo26n_1280x736.onnx"
+
+
+def test_the_first_shipped_model_keeps_its_old_name():
+    # YOLO26n at 640 shipped until ADR 0003; earlier results and commands name it yolo26n.onnx.
     assert export_model.output_name("n", (640, 640)) == "yolo26n.onnx"
 
 
 def test_arguments_default_to_the_shipped_model():
     args = export_model.parse_args([])
 
-    assert (args.model, args.size) == ("n", (640, 640))
+    assert (args.model, args.size) == ("n", (736, 1280))
 
 
 def test_arguments_take_model_and_size():

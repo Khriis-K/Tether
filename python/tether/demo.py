@@ -27,7 +27,7 @@ from tether.draw import draw_tracks
 from tether.formats import Detection, StepTimes, Track, save_detections, save_timings
 from tether.tracker import Tracker
 
-DEFAULT_MODEL = Path("models/yolo26n.onnx")
+DEFAULT_MODEL = Path("models/yolo26n_1280x736.onnx")  # the shipped detector (ADR 0003), shared by every tool
 WINDOW = "Tether"
 QUIT_KEYS = (ord("q"), 27)  # q or Esc
 

@@ -109,7 +109,7 @@ std::string default_timing_log() {
 
 std::filesystem::path model_for_size(const std::string& size) {
   if (size != "n" && size != "s" && size != "m") throw std::invalid_argument("model size must be n, s or m");
-  return std::filesystem::path("models") / ("yolo26" + size + ".onnx");
+  return std::filesystem::path("models") / ("yolo26" + size + "_" + SHIPPED_INPUT + ".onnx");
 }
 
 Settings run_settings(const std::filesystem::path& model, PipelineMode mode, Runtime runtime, bool cuda_graph,
@@ -131,7 +131,8 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
   std::map<std::string, Option> options = {
       {"--model", {"MODEL", "YOLO26 ONNX model; overrides --model-size (see tools/export_model.py)",
                    [&](const std::string& v) { o.model = v; }}},
-      {"--model-size", {"SIZE", "n, s or m: runs models/yolo26<SIZE>.onnx (default n)",
+      {"--model-size", {"SIZE", std::string("n, s or m: runs models/yolo26<SIZE>_") + SHIPPED_INPUT +
+                                    ".onnx (default n, the shipped detector)",
                         [&](const std::string& v) {
                           model_for_size(v);  // throws on anything but n, s or m
                           o.model_size = v;

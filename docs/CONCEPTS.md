@@ -274,7 +274,9 @@ The image size the model actually sees. A 1920×1080 frame is shrunk to fit the 
 **Gotcha:** ADR 0002's "bigger models barely help" came from two videos. On all seven, s at 640 is worth 5.07 HOTA over n at 640. Input size is the bigger lever, not the only one.
 
 ### Benchmark detection set vs. shipped detector
-Two separate choices. The **benchmark detection set** is what a tracker comparison runs on: detections are dumped to a file once, so it can come from a slow, strong detector, and it should, so the trackers get enough signal to be compared. The **shipped detector** is what runs live, so it has to be fast. Tether benchmarks on YOLO26n at 1280×736 and ships YOLO26n at 640 (for now), and reports MOT17 for both. See ADR 0002. #18 recommends shipping YOLO26n at 1280×736 too: on TensorRT in parallel mode it meets the speed targets on the Anti-UAV clip (124.82–126.18 FPS), so the two would be the same model (`docs/benchmarks/model-size.md`).
+Two separate choices. The **benchmark detection set** is what a tracker comparison runs on: detections are dumped to a file once, so it can come from a slow, strong detector, and it should, so the trackers get enough signal to be compared. The **shipped detector** is what runs live, so it has to be fast. Tether benchmarked on YOLO26n at 1280×736 while it shipped YOLO26n at 640 (ADR 0002). Once #18 measured both on TensorRT and #17 moved frame prep to the GPU, the 1280×736 model shipped too (ADR 0003: 195.45–195.86 FPS on the Anti-UAV clip). The two are now the same model, and MOT17 still reports 640 as a second row.
+
+**Gotcha:** "shipped" means the model, not a whole set of defaults. The runtime, prep and pipeline defaults stay ONNX Runtime, CPU and sequential, which run anywhere, and on them the 1280×736 model is 2.20–2.29× slower to detect than 640. The speed targets apply only to the opt-in GPU configuration.
 
 ---
 
@@ -342,7 +344,7 @@ Timing a single piece of code in isolation, away from everything around it, so i
 ### Profiling (Nsight Systems)
 Measuring where time actually goes before optimizing. Nsight Systems is NVIDIA's timeline profiler: it shows CPU threads, GPU kernels, and memory copies side by side.
 
-**In Tether:** the rule is to profile *before* writing the CUDA kernel, to prove frame prep is a real bottleneck instead of assuming it. #15 did, with the `nsys` CLI on the parallel pipeline (`docs/benchmarks/nsight-profile.md`). At the shipped 640 input, prep was never the slowest stage: capture was. Inside TensorRT's detect, the GPU was idle most of the time, waiting on [kernel launches](#kernel-launch-overhead-and-cuda-graphs). `tools/nsight_steps.py` turns a capture's SQLite export into per-step and per-part numbers.
+**In Tether:** the rule is to profile *before* writing the CUDA kernel, to prove frame prep is a real bottleneck instead of assuming it. #15 did, with the `nsys` CLI on the parallel pipeline (`docs/benchmarks/nsight-profile.md`). At 640 input (the shipped size then), prep was never the slowest stage: capture was. Inside TensorRT's detect, the GPU was idle most of the time, waiting on [kernel launches](#kernel-launch-overhead-and-cuda-graphs). `tools/nsight_steps.py` turns a capture's SQLite export into per-step and per-part numbers.
 
 **Gotcha:** the profiler changes what it measures. Tracing every CUDA call added 0.67–1.49 ms to TensorRT's detect step, enough to make detect the slowest stage on the Anti-UAV clip when, without the profiler, capture is. So the profile shows what's *inside* a step, and runs without the profiler show how long each step takes.
 
