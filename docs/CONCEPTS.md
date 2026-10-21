@@ -6,7 +6,7 @@ A running list of the ideas behind Tether, in plain English. Each entry says wha
 
 The stories behind these ideas (the problems we hit, how we found the causes, and what we learned) are in [LESSONS.md](LESSONS.md).
 
-**Contents:** [Tracking basics](#tracking-basics) · [Matching & motion](#matching--motion) · [Evaluation](#evaluation) · [Detection & runtimes](#detection--runtimes) · [Performance](#performance) · [Python vs. C++](#python-vs-c) · [Design & testing ideas](#design--testing-ideas)
+**Contents:** [Tracking basics](#tracking-basics) · [Matching & motion](#matching--motion) · [Evaluation](#evaluation) · [Detection & runtimes](#detection--runtimes) · [Performance](#performance) · [Python vs. C++](#python-vs-c) · [Display](#display) · [Design & testing ideas](#design--testing-ideas)
 
 ---
 
@@ -250,9 +250,9 @@ Two separate choices. The **benchmark detection set** is what a tracker comparis
 - **Throughput:** how many frames per second come out (FPS).
 - **Latency:** how long one frame takes from camera to screen (end-to-end delay).
 
-They're different. A parallel pipeline can raise FPS without making any single frame faster, and can even add a little delay per frame.
+They're different. A parallel pipeline can raise FPS without making any single frame faster, and can add delay per frame, sometimes a lot.
 
-**In Tether:** the timing log stores each step's start and end time, not just how long it took, so both can be measured from one log. Frame time is the gap between frames finishing; delay is from a frame being captured to it being drawn. In the sequential pipeline they're nearly the same number. In the parallel one they split apart, and only timestamps can tell.
+**In Tether:** the timing log stores each step's start and end time, not just how long it took, so both can be measured from one log. Frame time is the gap between frames finishing; delay is from a frame being captured to it being drawn. In the sequential pipeline they're nearly the same number. In the parallel one they split apart, and only timestamps can tell. Measured (#14, one-frame queues, video files): FPS up 1.23–1.57×, and delay up from about 37 ms to 147–159 ms. That's a [Little's law](#littles-law) effect (`docs/benchmarks/parallel-pipeline.md`).
 
 **Gotcha:** the measured delay starts when the program has the frame. The camera's own sensor-to-USB delay comes before that and isn't counted, so a true camera-to-screen number is higher.
 
@@ -262,19 +262,48 @@ The frame time that 99% of frames beat. Averages hide the occasional slow frame,
 ### Nearest-rank percentile
 One way to compute a percentile: sort the values and pick the one at position ⌈p × n⌉. The answer is always a value you actually measured. NumPy's default instead *interpolates* between neighbors, which can give a frame time no frame ever had. On small samples the two disagree a lot.
 
-**In Tether:** `tether-timing` uses nearest rank. With under 100 frames, P99 is simply the worst frame.
+**In Tether:** `tether-timing` uses nearest rank, and so does the C++ `p99` behind the live stats panel, which works it out over the last 300 frames. With under 100 frames, P99 is simply the worst frame.
 
 ### Sequential vs. parallel (pipelined) stages
 - **Sequential:** capture → prep → detect → track → draw, one frame at a time. Simple to debug, but every stage waits on the others.
 - **Parallel:** each stage runs on its own thread and works on a different frame at the same moment, like an assembly line. Throughput becomes limited by the *slowest single stage*, not the sum of all of them.
 
+**In Tether:** `tether-pipeline --pipeline parallel` (#14) runs capture, prep, detect and track on four threads, and draws on the main one, because a GLFW window has to be drawn on the thread that made it. Frames pass through FIFO queues, so the tracker still sees them in order: recordings with the tracks drawn came out byte-identical to sequential's on MOT17-09 and the Anti-UAV clip. The frame time settled at the detect time (about 33 ms), so the gain is capped at sequential frame time over detect time: 1.23× on the Anti-UAV clip, 1.57× on MOT17-04, where JPEG decoding had more to hide. On the webcam it took the camera's dropped frames from 129 to 0 in 300, with just 0.2 ms to spare per frame.
+
+**Gotcha:** overlapped steps compete for the same cores. Decoding ran up to twice as slow in parallel, because ONNX Runtime keeps its own threads busy during detect. It didn't matter here because decoding wasn't the bottleneck, but it would with a faster detector.
+
 ### Bounded queue & backpressure
 The buffers between pipeline stages have a fixed maximum size. If a slow stage falls behind, its input queue fills up and the faster stage before it has to wait. That pushback is **backpressure**. Without a limit, a fast producer would pile up frames forever, using more and more memory and adding more and more delay.
+
+**In Tether:** `BoundedQueue` (`cpp/src/tether/bounded_queue.hpp`) holds one frame between each pair of stages. Closing a queue is also how the parallel pipeline stops. A stage that reaches the end of the video closes its output, and the stages after it finish what's queued and stop too. A quit or an error closes every queue, which wakes any stage waiting on one.
+
+**Gotcha:** a bigger queue doesn't make anything faster once the slow stage always has its next frame ready. It only adds waiting. Going from two frames to one kept FPS and cut delay by about two detect times (#14).
+
+### Little's law
+In any steady system, *items inside = arrival rate × time each spends inside*. Turned around for a pipeline: **delay = frames in flight × frame time**. A full pipeline running at 30 FPS with 5 frames in flight has about 167 ms of delay, however fast each step is.
+
+**In Tether:** on a video file, the parallel pipeline's capture and prep run ahead of the detector until every queue before it is full, so about five frames are in flight (one held by capture, one queued, one in prep, one queued, one in detect). Five times a 33 ms frame predicts about 165 ms, and the measured delay was 147–159 ms. With two-frame queues, two more frames waited and delay rose by about two frame times. The webcam's delay was lower (83 ms) because capture can't run ahead of the camera (`docs/benchmarks/parallel-pipeline.md`).
+
+**Gotcha:** for a live camera, the fix for delay is to drop old frames rather than queue them, that is, to always detect the newest one. That trades smoothness for freshness, and Tether doesn't do it yet.
 
 ### Amdahl's law
 Speeding up one part of a job only helps in proportion to how much of the total time that part takes. If tracking is 5% of frame time, making it 10× faster saves at most about 4.5%.
 
-**In Tether:** this is why the spec reports the tracking-step speedup (expected to be large) and the whole-pipeline speedup (expected to be smaller, because the detector dominates) as separate numbers.
+**In Tether:** this is why the spec reports the tracking-step speedup (expected to be large) and the whole-pipeline speedup (expected to be smaller, because the detector dominates) as separate numbers. Measured: tracking is 10–25× faster in C++, but the whole pipeline only 1.08–1.20×, because the detector is the same ONNX Runtime call in both languages and takes 66–83% of a C++ frame. Python frame time over Python detect time gives the most C++ could ever win with that detector: 1.27–1.76× depending on the video, so the spec's 2× needs a faster detector (`docs/benchmarks/cpp-pipeline-speed.md`).
+
+### Dropped frames (webcam)
+A camera produces frames at its own fixed rate whether or not the program is ready. If the pipeline takes longer than one camera period per frame, the camera keeps capturing and some frames are never read: they're dropped. A live demo has to keep up or it stutters.
+
+**In Tether:** the C++ webcam source counts drops from the camera's own frame timestamps. A gap of about *k* periods since the last frame means *k* − 1 frames dropped, rounded so ordinary jitter doesn't count. Each timing-log line carries the count, and `tether-timing` totals it. A camera that reports no frame rate or timestamps gets no count at all, rather than a misleading 0. On the laptop camera (30 FPS), the sequential C++ pipeline read 300 frames and the camera dropped 69 more: its detect step alone (33.7 ms) is longer than the 33.3 ms period.
+
+**Gotcha:** wall-clock time can't see drops. The camera driver buffers a few frames, so a slow pipeline still gets a frame instantly on many reads, from the buffer, and looks fine until the buffer overflows. Then frames vanish in bursts (here, three at a time, about every 13 frames). Only the camera's timestamps show where the gaps are.
+
+### Microbenchmark (timing one step alone)
+Timing a single piece of code in isolation, away from everything around it, so its own speed is all you measure. The usual rules: time only that code, run it several times and keep the median, and do exactly the same work on both sides of a comparison.
+
+**In Tether:** `tether-parity` times the tracking step alone. A fresh tracker runs `update` over a whole detection file, with file reading and writing left out, 5 times per language, keeping the median. The C++ tracking step is 14.1× faster on MOT17 and 35.0× faster on Anti-UAV (`docs/benchmarks/cpp-tracking-speed.md`).
+
+**Gotcha:** a microbenchmark can be fooled in both directions. A timer that starts in the wrong place still returns a positive number, a few nanoseconds. A test only caught that once it demanded a time no real run could beat. And a big speedup on one step says little about the whole program ([Amdahl's law](#amdahls-law)).
 
 ### Profiling (Nsight Systems)
 Measuring where time actually goes before optimizing. Nsight Systems is NVIDIA's timeline profiler: it shows CPU threads, GPU kernels, and memory copies side by side.
@@ -297,9 +326,61 @@ Libraries like NumPy and ONNX Runtime do their heavy work in compiled C/C++ unde
 ### Floating-point differences between languages
 Decimal math on computers is rounded, and the result can depend on the order of operations. Python (NumPy) and C++ can do the same math in a slightly different order and get answers that differ in the last few digits. Neither one is wrong.
 
-**In Tether:** that's why the Python-vs-C++ check requires *matching* outputs (same IDs and statuses, boxes within a tiny tolerance), not bit-identical ones.
+**In Tether:** that's why the Python-vs-C++ check requires *matching* outputs (same IDs and statuses, boxes within a tiny tolerance), not bit-identical ones. `tether-parity` checks this to 1e-6 px. On all 462 real detection files we have, the C++ port's boxes differ from Python's by at most 2.6e-9 px (`docs/benchmarks/cpp-tracking-speed.md`).
+
+### Bit-exact ports (matching NumPy's float32 math)
+Sometimes "within a tolerance" isn't good enough, and you want both languages to produce the very same bytes. Then the port has to copy not just the formula but the number types and the rounding rules.
+
+**In Tether:** the C++ frame prep and detector write detection files byte-identical to Python's (1000 Anti-UAV frames and 525 MOT17 frames, checked with `cmp`). Three details made that work. Python's `round()` rounds halves to even (2.5 → 2), so C++ uses `std::nearbyint`, not `std::round`. Scaling pixels to [0, 1] divides in float32, as NumPy does. And box decoding is done in float32 too. Under NumPy 2's rules, a float32 array combined with a plain Python number stays float32, so `(x1 - pad) / scale` rounds to float32 at every step. Doing it in double gave 337.66667683919275 where Python gives 337.6666564941406.
+
+**Gotcha:** both shortcuts pass every test that uses round numbers (scale 0.5, scale 1). Only a test with an awkward scale like 0.3, or a size that lands exactly on .5, catches them.
+
+### Tie-breaking (why the port copies SciPy's solver)
+When two different answers are exactly as good, which one an algorithm returns depends on details like the order it scans its inputs. That's not a bug, but two implementations that both find "an optimal answer" can still disagree.
+
+**In Tether:** Hungarian matching can have several equally cheap pairings, most often in symmetric scripted scenes. If the C++ tracker picked a different one than Python, the IDs would swap and stay swapped. So the C++ solver is a line-by-line translation of SciPy's `linear_sum_assignment`, including the order it scans columns in and its rule for ties, and it's tested against SciPy's answers on tie-heavy matrices. Every other loop (tracks in ID order, detections in file order) follows the Python too.
+
+**Gotcha:** a textbook Hungarian implementation would pass every test that has one best answer, and could still drift from Python on real data, wherever a tie came up.
+
+### Shortest round-trip number printing
+Printing a decimal number with the fewest digits that still read back to exactly the same value: `0.1` rather than `0.1000000000000000055511151231257827`. Python's `repr` and `json.dumps` do this, and C++17's `std::to_chars` can too.
+
+**In Tether:** the C++ file writer prints numbers exactly as Python's `json.dumps` does, including when it switches to scientific notation (`1e-05`, `1e+16`), so track files from the two trackers look the same and a text diff shows only real differences.
+
+**Gotcha:** "shortest" doesn't settle the notation. C++'s shortest output prints 10^16 as `1e+16` in one mode and `10000000000000000` in another, and Python picks by its own rule (scientific below 1e-4 and from 1e16 up), so the port has to apply Python's rule itself.
 
 ---
+
+## Display
+
+### Golden-ratio colours
+A way to give each new item its own colour without knowing how many items there will be. Step the hue (the position around the colour wheel) by the golden ratio, about 0.618 of a turn, for each new ID. Because the golden ratio is the "most irrational" number, the hues never line up into bunches: any first N of them stay spread around the wheel, and back-to-back IDs land far apart. An even split (1/N apart) is better, but only if you know N up front, which a tracker never does.
+
+**In Tether:** `track_hue` in `cpp/src/tether/hud.cpp`. A test checks that for every N up to 60, the closest two of the first N hues are at least 0.3/N apart. The hues also skip a narrow band around the accent orange, so no track looks like "searching".
+
+**Gotcha:** colour alone still isn't enough. Some IDs land close together by chance, and some viewers can't tell red from orange. That's why status is shown by line style (see the next entry).
+
+### Redundant encoding (not by colour alone)
+Showing one piece of information two ways at once, so it still reads if one channel fails, for example for colour-blind viewers or on a washed-out projector. It's a standard accessibility rule: never use colour as the only signal.
+
+**In Tether:** a track's status is shown both by colour and by line style. Tracked objects get solid corner brackets. The prediction of where they'll be next is a thin dashed box. A searching object is a thick, longer-dashed box in the accent colour, with a "missing N" label. A test compares the searching box's ink with a prediction's, so "thicker" can't quietly drift away.
+
+### Immediate-mode GUI (Dear ImGui)
+A way to build a user interface where the program redraws the whole UI every frame from its current data, instead of creating widgets once and updating them. Each frame you call `Text(...)`, `ProgressBar(...)` and so on, and the library turns those calls into triangles for the GPU. There's no widget state to keep in sync, which suits a display whose numbers change every frame. Dear ImGui is the common C++ library for it, popular for game and tool overlays.
+
+**In Tether:** the stats panel (`cpp/src/tether/panel.cpp`) is one function, `draw_panel`, called every frame with the latest stats, tracks and settings. `GuiScreen` (`gui_screen.cpp`) runs it in a GLFW window through OpenGL, with the video as a texture beside it. Because ImGui only produces vertex lists, the tests draw the panel in a context with no window and check the vertex colours: no accent orange unless a track is searching, and no colour outside the palette.
+
+**Gotcha:** ImGui's defaults (grey theme, its own font, rounded windows) show through anywhere you don't override them. The panel pushes its own colours for every element it uses, and a test catches any stray colour.
+
+### Vsync (waiting for the monitor's refresh)
+Holding each new frame until the monitor starts its next refresh, so the picture never tears. The cost is that showing a frame can block for up to one refresh period (16.7 ms at 60 Hz), and the frame rate can't go above the refresh rate.
+
+**In Tether:** the `--show` window turns it off (`glfwSwapInterval(0)`). With it on, the wait would land inside the `draw` step's time, inflating it and the frame time, and the FPS number couldn't go past 60. A timed pipeline should measure its own work, not the monitor's schedule.
+
+### Image-sequence frame rate
+A folder of numbered images (how MOT17 ships its videos) has no frame rate of its own: it's just pictures. When OpenCV opens one through FFmpeg it can report FFmpeg's default of 25 FPS, which is made up. A PNG sequence in our tests reported nothing at all.
+
+**In Tether:** `--record` saves at the source's frame rate. Trusting the 25 made MOT17-09, really 30 FPS, play back slow (`docs/spec-verify/issue-12.md`). So an image sequence now reports "can't tell" (0), and the recording falls back to 30. The true rate is in each MOT17 video's `seqinfo.ini`; a few are 14 or 25 FPS and would still record at the wrong speed.
 
 ## Design & testing ideas
 

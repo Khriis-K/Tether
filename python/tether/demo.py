@@ -3,6 +3,9 @@
 Every tracking run logs each frame's per-step timing to a timing log (see
 --timing); tether-timing summarizes it. --dump runs aren't timed.
 
+With --headless, tracks and logs timing without drawing or a window, as the
+C++ pipeline (tether-pipeline) does, so the two can be compared step for step.
+
 With --dump, skips the tracker and window and writes the raw detections to a
 detection file instead, for benchmarks and other trackers to read.
 """
@@ -78,6 +81,11 @@ def show_frame(frame: np.ndarray, tracks: list[Track]) -> bool:
     return not quit_pressed and cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) >= 1
 
 
+def headless(frame: np.ndarray, tracks: list[Track]) -> bool:
+    """The draw step with nothing to draw on: never stops the run."""
+    return True
+
+
 def clock_ms() -> float:
     return time.perf_counter() * 1000
 
@@ -92,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--det-min-score", type=float, default=DETECTOR_MIN_SCORE,
                         help="lowest detector score kept; the tracker then applies its own "
                              f"threshold on top (default {DETECTOR_MIN_SCORE})")
+    parser.add_argument("--headless", action="store_true",
+                        help="track and log timing without drawing or showing a window")
     parser.add_argument("--timing", metavar="LOG",
                         help="timing log to write (.jsonl; default results/timing-<date>-<time>.jsonl)")
     args = parser.parse_args(argv)
@@ -106,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"logging timing to {timing_log}")
             prepare_frame = partial(prepare, input_size=detect.input_size)
             save_timings(timing_log, timed_tracking(video.frames(args.source), prepare_frame, detect.detect,
-                                                Tracker(), show_frame, clock_ms))
+                                                Tracker(), headless if args.headless else show_frame, clock_ms))
     except KeyboardInterrupt:
         pass  # Ctrl-C ends a webcam run; frames written so far make a valid detection file or timing log
     finally:

@@ -64,6 +64,15 @@ def load_timings(path: str | Path) -> list[StepTimes]:
     return [_step_times_from_json(path, line) for line in _read_lines(path)]
 
 
+def load_dropped(path: str | Path) -> int | None:
+    """Frames the camera dropped over a webcam run, from each line's optional "dropped" count.
+
+    None for a run that didn't count them (a video file, or the Python pipeline).
+    """
+    counts = [line["dropped"] for line in _read_lines(path) if "dropped" in line]
+    return sum(counts) if counts else None
+
+
 def _detection_to_json(d: Detection) -> dict:
     return {"box": _floats(d.box), "score": float(d.score), "class": int(d.cls)}
 

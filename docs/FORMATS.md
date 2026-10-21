@@ -52,7 +52,7 @@ Tracks in each frame are sorted by `id`.
 
 ## Timing log
 
-Every pipeline run writes one, in Python (`tether-demo`, default `results/timing-<date>-<time>.jsonl`) and in C++. `tether-demo --dump` only saves detections and isn't timed. Each line holds when every step of that frame started and ended.
+Every pipeline run writes one, in Python (`tether-demo`, default `results/timing-<date>-<time>.jsonl`) and in C++ (`tether-pipeline`, default `results/timing-cpp-<date>-<time>.jsonl`). `--dump` runs only save detections and aren't timed. Each line holds when every step of that frame started and ended.
 
 ```json
 {"frame": 0, "steps": {"capture": [0.0, 2.1], "prep": [2.1, 3.4], "detect": [3.4, 21.0], "track": [21.0, 21.3], "draw": [21.3, 23.0]}}
@@ -67,7 +67,13 @@ Times are `[start, end]` in milliseconds from a monotonic clock (Python's `time.
 | `prep` | Turning the frame into model input (letterbox, color order, scaling). |
 | `detect` | Running the model and turning its output into detections. |
 | `track` | One tracker update. |
-| `draw` | Drawing the overlay and putting the frame on screen. In Python this includes `cv2.waitKey(1)`, which is where OpenCV actually paints the window, and on Windows it can take a few ms. |
+| `draw` | Drawing the overlay and putting the frame on screen. In Python this includes `cv2.waitKey(1)`, which is where OpenCV actually paints the window, and on Windows it can take a few ms. Headless runs (`tether-pipeline`, `tether-demo --headless`) draw nothing, so it takes about 0 ms. |
+
+A webcam run of the C++ pipeline also gives each line `"dropped"`: how many frames the camera captured just before this one that the pipeline never got, because it was still busy. It's counted from the camera's own frame timestamps: a gap of about *k* frame periods since the previous frame means *k* − 1 dropped. Video-file runs, cameras that report no frame rate or timestamps (so drops can't be counted), and the Python pipeline leave it out.
+
+```json
+{"frame": 7, "steps": {"capture": [0.0, 2.1], "prep": [2.1, 3.4], "detect": [3.4, 21.0], "track": [21.0, 21.3], "draw": [21.3, 21.3]}, "dropped": 2}
+```
 
 Steps are stored as times, not durations, so the parallel pipeline can use the same format: there, one frame's steps don't follow each other directly, and the next frame's capture overlaps this frame's detect.
 
@@ -77,7 +83,38 @@ Steps are stored as times, not durations, so the parallel pipeline can use the s
 - **End-to-end delay:** from a frame's `capture` end to its `draw` end, i.e. from frame in hand to frame on screen. It leaves out what happens before the frame reaches the program: the camera's own delay, and time a frame sat in the camera driver's buffer. If the pipeline runs slower than the camera, the driver may hand over old buffered frames instantly, so the real delay grows while the measured one doesn't. Check that frame time keeps up with the camera before trusting a webcam delay number.
 - **Each step's time:** its end minus its start.
 
-P99 is the nearest-rank value: sort the values and take number ⌈0.99 × n⌉ (counting from 1). It is always a real measured value; with fewer than 100 values it's the largest. Every frame counts, including the slow first ones (model warm-up, opening the window), so on short runs P99 mostly reports warm-up. Use runs of a few hundred frames or more. The results are saved as JSON next to the log (`timing-….summary.json`) or wherever `--out` says.
+P99 is the nearest-rank value: sort the values and take number ⌈0.99 × n⌉ (counting from 1). It is always a real measured value; with fewer than 100 values it's the largest. Every frame counts, including the slow first ones (model warm-up, opening the window), so on short runs P99 mostly reports warm-up. Use runs of a few hundred frames or more. The results are saved as JSON next to the log (`timing-….summary.json`) or wherever `--out` says. When the log has `"dropped"` counts, the summary adds their total as `dropped_frames`.
+
+## Parity results file
+
+`tether-parity` (`python/tether/parity.py`) runs detection files through both trackers, compares them and times the tracking step in each. It writes one JSON file (`--out`, default `results/parity-<date>-<time>.json`):
+
+```json
+{"tolerance": 1e-06, "repeats": 5, "all_match": true, "speedup": 14.1,
+ "inputs": [{"name": "MOT17-09-FRCNN.jsonl", "frames": 525, "match": true, "first_mismatch": null,
+             "max_box_difference": 5.4e-10, "python_ms": 1139.6, "cpp_ms": 83.0, "speedup": 13.7,
+             "path": "results/mot17/detections/yolo26n/MOT17-09-FRCNN.jsonl"}]}
+```
+
+- `match` holds when every frame has the same tracks in the same order with the same `id`, `status`, `class`, `frames_since_seen` and path length, and every `box`, `predicted_box` and path coordinate is within `tolerance` px. Otherwise `first_mismatch` is `{"frame", "track_id", "what"}` for the first difference (`track_id` is null when the frame counts differ).
+- `python_ms` and `cpp_ms` are the median over `repeats` runs of a fresh default tracker's `update` over every frame of the file, with no file reading or writing. `speedup` is their ratio; the top-level one is total Python time over total C++ time across all inputs.
+- `path` is null for the built-in scripted scenes (`--scripted`).
+
+The C++ side is timed by `tether-time-track detections.jsonl [--repeats N]`, which prints one line: `{"frames": 525, "repeats_ms": [80.4, 89.6, 86.0]}`.
+
+## Pipeline comparison results file
+
+`tether-pipeline-compare VIDEO` (`python/tether/pipeline_compare.py`) runs `tether-demo --headless` and `tether-pipeline` on the same video file with the same model, one after the other, and writes one JSON file (`--out`, default `results/pipeline-compare-<date>-<time>.json`). Both timing logs are kept next to it as `<name>.python-timing.jsonl` and `<name>.cpp-timing.jsonl`.
+
+```json
+{"video": "visible.mp4", "model": "models/yolo26n.onnx",
+ "python": {"frames": 1000, "fps": 30.1, "frame_time_ms": {"mean": 33.2, "p99": 41.0}, "...": "..."},
+ "cpp": {"frames": 1000, "fps": 40.3, "...": "..."},
+ "speedup": {"fps": 1.34, "frame_time": 1.34, "end_to_end_delay": 1.35,
+             "steps": {"capture": 1.1, "prep": 2.0, "detect": 1.2, "track": 14.0, "draw": null}}}
+```
+
+The numbers above only show the shape. `python` and `cpp` are each a `tether-timing` summary. Every speedup is Python's mean time over C++'s, except `fps`, which is C++'s FPS over Python's; both read as "times faster in C++". A step C++ spends no time on (headless `draw`) has `null`.
 
 ## Matching rules
 
