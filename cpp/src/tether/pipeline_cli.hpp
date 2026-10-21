@@ -9,14 +9,12 @@
 #include <vector>
 
 #include "tether/panel.hpp"
+#include "tether/pipeline.hpp"
 
 namespace tether {
 
 // models/yolo26<size>.onnx for size "n", "s" or "m"; throws std::invalid_argument otherwise.
 std::filesystem::path model_for_size(const std::string& size);
-
-// run_sequential or run_parallel (pipeline.hpp).
-enum class PipelineMode { sequential, parallel };
 
 // The speed settings behind a run of `model` in `mode`, for the stats panel.
 Settings run_settings(const std::filesystem::path& model, PipelineMode mode = PipelineMode::sequential);

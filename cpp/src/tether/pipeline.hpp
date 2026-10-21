@@ -35,6 +35,13 @@ void run_sequential(VideoSource& source, FramePrep& prep, Detector& detector, Tr
 // delay by about a third (docs/benchmarks/parallel-pipeline.md).
 constexpr size_t PARALLEL_QUEUE_CAPACITY = 1;
 
+// Which loop runs a pipeline: run_sequential above, or run_parallel below.
+enum class PipelineMode { sequential, parallel };
+
+// Threads run_parallel starts: one each for capture, prep, detect and track.
+// Draw runs on the caller's.
+constexpr int PARALLEL_STAGE_THREADS = 4;
+
 // run_sequential with the steps overlapped: capture, prep, detect and track
 // each run on their own thread, on different frames at once, and pass frames
 // on through bounded queues. Draw and `on_frame` run on the caller's thread (a

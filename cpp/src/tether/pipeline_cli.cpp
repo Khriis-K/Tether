@@ -110,12 +110,14 @@ std::filesystem::path model_for_size(const std::string& size) {
 }
 
 Settings run_settings(const std::filesystem::path& model, PipelineMode mode) {
-  // Parallel: capture, prep, detect and track threads, and draw on the main one.
   // ONNX Runtime's own threads inside detect aren't counted in either mode.
+  std::string pipeline = mode == PipelineMode::parallel
+                             ? "parallel, " + std::to_string(PARALLEL_STAGE_THREADS + 1) + " threads"  // + main
+                             : "sequential, 1 thread";
   return {{"model", model.filename().string()},
           {"runtime", "ONNX Runtime (CPU)"},
           {"frame prep", "CPU"},
-          {"pipeline", mode == PipelineMode::parallel ? "parallel, 5 threads" : "sequential, 1 thread"}};
+          {"pipeline", pipeline}};
 }
 
 int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, std::ostream& err) {
