@@ -345,9 +345,16 @@ NVIDIA's tiny annotation API: push a named range when a piece of code starts and
 ### Kernel launch overhead (and CUDA graphs)
 Every GPU kernel is started by a call from the CPU, and each call costs microseconds. A model made of hundreds of small kernels can spend longer *launching* than the GPU spends running them, and the GPU sits idle in between. A CUDA graph records the whole sequence of launches once and replays it with one call.
 
-**In Tether:** TensorRT's YOLO26n engine launches 217 kernels per frame at 640. Profiled, the CPU took 5.81–6.10 ms to launch them while the GPU computed for 1.47–1.53 ms. `trtexec` on the same engine took 4.04–4.06 ms to enqueue without a graph and 0.028–0.029 ms with one. The launch time also explains TensorRT's wide P99: in the slowest 1% of frames, the kernels took the same time and the launches took about twice as long. The pipeline doesn't use a CUDA graph yet.
+**In Tether:** TensorRT's YOLO26n engine launches 217 kernels per frame at 640. Profiled, the CPU took 5.81–6.10 ms to launch them while the GPU computed for 1.47–1.53 ms. `trtexec` on the same engine took 4.04–4.06 ms to enqueue without a graph and 0.028–0.029 ms with one. The launch time also explains TensorRT's wide P99: in the slowest 1% of frames, the kernels took the same time and the launches took about twice as long. A [CUDA graph](#cuda-graph-capture-once-replay-each-frame) took the launch to 0.407–0.438 ms (#40).
 
 **Gotcha:** "faster GPU" won't fix a launch-bound model. Detect barely grew from 640 to 1280×736 for exactly this reason: the kernels got slower, the launches didn't.
+
+### CUDA graph (capture once, replay each frame)
+A recording of GPU work. Put a stream into capture mode, issue the work as usual (kernel launches, copies), end the capture, and CUDA hands back a graph of everything that was issued instead of running it. Instantiate the graph once, and each `cudaGraphLaunch` runs the whole recording with one call. It replays the same kernels with the same arguments and the same memory addresses, so the buffers have to stay where they were.
+
+**In Tether:** `TensorRtDetector` captures one `enqueueV3` on its own stream at start-up and replays it every frame; the copies in and out stay outside the graph (#40, `docs/benchmarks/cuda-graph.md`). At 640, detect went from 5.10–6.37 ms to 2.32–2.97 ms with byte-identical detections. `--no-cuda-graph` turns it off. If capture fails, it warns and launches directly.
+
+**Gotcha:** capture has rules. It needs a stream of your own (not the default stream), and work that can't be recorded fails the capture, so run the engine once *before* capturing: TensorRT does its one-off setup on the first run. Always end the capture, even when the recorded call failed, or the stream stays stuck in capture mode. And a graph only saves *launch* time: in parallel mode, where FPS is set by the slowest stage, a 2× faster detect raised FPS 1.02–1.10×, because decoding was slower. Profile with `nsys --cuda-graph-trace=node` to see the kernels inside a graph; by default Nsight shows the graph as one block.
 
 ### Busy share (finding the bottleneck stage)
 A stage's total working time divided by the run's wall time. In a pipeline where each stage has its own thread, the slowest stage is busy nearly all the time, and the others wait. FPS is set by that stage, so speeding up any other one changes nothing.

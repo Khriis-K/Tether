@@ -51,6 +51,7 @@ struct Options {
   bool show = false;
   PipelineMode pipeline = PipelineMode::sequential;
   Runtime runtime = Runtime::onnxruntime;
+  bool cuda_graph = true;
   std::string model_size = "n";
   double det_min_score = DETECTOR_MIN_SCORE;
   long long max_frames = 0;  // 0: no limit
@@ -110,13 +111,15 @@ std::filesystem::path model_for_size(const std::string& size) {
   return std::filesystem::path("models") / ("yolo26" + size + ".onnx");
 }
 
-Settings run_settings(const std::filesystem::path& model, PipelineMode mode, Runtime runtime) {
+Settings run_settings(const std::filesystem::path& model, PipelineMode mode, Runtime runtime, bool cuda_graph) {
   // ONNX Runtime's own threads inside detect aren't counted in either mode.
   std::string pipeline = mode == PipelineMode::parallel
                              ? "parallel, " + std::to_string(PARALLEL_STAGE_THREADS + 1) + " threads"  // + main
                              : "sequential, 1 thread";
   return {{"model", model.filename().string()},
-          {"runtime", runtime == Runtime::tensorrt ? "TensorRT (GPU)" : "ONNX Runtime (CPU)"},
+          {"runtime", runtime == Runtime::onnxruntime ? "ONNX Runtime (CPU)"
+                      : cuda_graph                    ? "TensorRT (GPU)"
+                                                      : "TensorRT (GPU, no CUDA graph)"},
           {"frame prep", "CPU"},
           {"pipeline", pipeline}};
 }
@@ -154,6 +157,9 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
                        else if (v == "tensorrt") o.runtime = Runtime::tensorrt;
                        else throw std::invalid_argument(v);
                      }}},
+      {"--no-cuda-graph", {"", "with --runtime tensorrt: launch the engine's kernels one by one each frame, instead of "
+                               "replaying them from a CUDA graph captured once at start-up",
+                           [&](const std::string&) { o.cuda_graph = false; }}},
       {"--max-frames", {"N", "stop after N frames (default: run to the end, or until Ctrl-C)",
                         [&](const std::string& v) { o.max_frames = parse_positive(v); }}},
       {"--show", {"", "show the tracks in a window, with a live stats panel beside the video: Space pauses and resumes, q or Esc quits. While paused "
@@ -225,6 +231,10 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     err << usage() << "tether-pipeline: error: --show and --record track and draw, which --dump skips\n";
     return 2;
   }
+  if (!o.cuda_graph && o.runtime != Runtime::tensorrt) {
+    err << usage() << "tether-pipeline: error: --no-cuda-graph only applies to --runtime tensorrt\n";
+    return 2;
+  }
   if (o.dump && o.pipeline == PipelineMode::parallel) {
     err << usage() << "tether-pipeline: error: --pipeline parallel runs the tracking stages, which --dump skips\n";
     return 2;
@@ -232,7 +242,7 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
 
   try {
     std::filesystem::path model = o.model ? std::filesystem::path(*o.model) : model_for_size(o.model_size);
-    auto detector_ptr = make_detector(o.runtime, model, o.det_min_score);
+    auto detector_ptr = make_detector(o.runtime, model, o.det_min_score, o.cuda_graph);
     Detector& detector = *detector_ptr;
     auto [height, width] = detector.input_size();
     CpuFramePrep prep(height, width);
@@ -270,7 +280,7 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     std::vector<Track> on_screen;
     std::unique_ptr<GuiScreen> screen;
     if (o.show)
-      screen = std::make_unique<GuiScreen>("Tether", [&] { return PanelData{stats.summary(), on_screen, run_settings(model, o.pipeline, o.runtime)}; });
+      screen = std::make_unique<GuiScreen>("Tether", [&] { return PanelData{stats.summary(), on_screen, run_settings(model, o.pipeline, o.runtime, o.cuda_graph)}; });
     cv::VideoWriter recording;  // opened on the first frame, once its size is known
     Recorder recorder;
     if (o.record) {

@@ -96,10 +96,11 @@ std::filesystem::path engine_for_model(const std::filesystem::path& model) {
   return std::filesystem::path(model).replace_extension(".engine");
 }
 
-std::unique_ptr<Detector> make_detector(Runtime runtime, const std::filesystem::path& model, double min_score) {
+std::unique_ptr<Detector> make_detector(Runtime runtime, const std::filesystem::path& model, double min_score,
+                                        [[maybe_unused]] bool cuda_graph) {
   if (runtime == Runtime::onnxruntime) return std::make_unique<OnnxDetector>(model, min_score);
 #ifdef TETHER_HAS_TENSORRT
-  return std::make_unique<TensorRtDetector>(engine_for_model(model), min_score);
+  return std::make_unique<TensorRtDetector>(engine_for_model(model), min_score, cuda_graph);
 #else
   throw std::runtime_error("this build has no TensorRT runtime; configure CMake with -DTensorRT_ROOT=<TensorRT folder>");
 #endif

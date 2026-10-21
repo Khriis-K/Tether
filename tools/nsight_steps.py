@@ -9,11 +9,13 @@ Reads the pipeline's own NVTX ranges (capture, prep, detect, track, draw; see
 `StepRange` in cpp/src/tether/pipeline.cpp) and, inside each detect range, the
 CUDA calls made on the detect thread and the GPU work they started. Each
 TensorRT detect call is split, on the CPU, into the copy to the GPU, launching
-the engine's kernels (enqueueV3), the copy back, waiting for the GPU, and the
+the engine's kernels (enqueueV3, or one cudaGraphLaunch when the engine is
+replayed from a CUDA graph, #40), the copy back, waiting for the GPU, and the
 rest (decoding the output); and on the GPU into the two copies, the kernels,
 and the time the GPU sat idle between the first copy starting and the last
 one ending. Times are milliseconds; percentiles are nearest-rank, as in
-tether-timing.
+tether-timing. Profile a CUDA graph run with `--cuda-graph-trace=node`, or nsys
+records the graph as a whole and its kernels can't be counted.
 """
 
 import argparse
@@ -43,9 +45,17 @@ def _named(call: Call, prefix: str) -> bool:
     return call.name.startswith(prefix)
 
 
-def split_detect(detect: tuple[float, float], calls: list[Call], gpu: dict[int, tuple[float, float]]) -> dict:
+Span = tuple[float, float]
+
+
+def _spans(work: Span | list[Span]) -> list[Span]:
+    """A call's GPU work: one span, or several when one graph launch ran many kernels."""
+    return work if isinstance(work, list) else [work]
+
+
+def split_detect(detect: tuple[float, float], calls: list[Call], gpu: dict[int, Span | list[Span]]) -> dict:
     """One detect call's time, by part. `calls` are the detect thread's CUDA calls; `gpu` maps a
-    call's correlation id to when its GPU work (a copy or a kernel) ran."""
+    call's correlation id to when its GPU work (a copy, a kernel, or a graph's kernels) ran."""
     start, end = detect
     calls = sorted((c for c in calls if start <= c.start and c.end <= end), key=lambda c: c.start)
     copies = [c for c in calls if _named(c, "cudaMemcpyAsync")]
@@ -61,16 +71,22 @@ def split_detect(detect: tuple[float, float], calls: list[Call], gpu: dict[int, 
     parts["sync"] = sum(c.end - c.start for c in calls if _named(c, "cudaStreamSynchronize"))
     parts["other"] = parts["total"] - sum(parts[p] for p in CPU_PARTS if p != "other")
 
+    def work(of: list[Call]) -> list[Span]:
+        return [span for c in of if c.correlation in gpu for span in _spans(gpu[c.correlation])]
+
     def gpu_time(of: list[Call]) -> float:
-        return sum(gpu[c.correlation][1] - gpu[c.correlation][0] for c in of if c.correlation in gpu)
+        return sum(e - s for s, e in work(of))
 
     if copies:
         parts["gpu_h2d"] = gpu_time(copies[:1])
         parts["gpu_d2h"] = gpu_time(copies[1:])
     launches = [c for c in calls if _named(c, "cuLaunchKernel")]
+    graphs = [c for c in calls if _named(c, "cudaGraphLaunch")]
     parts["launches"] = len(launches)
-    parts["gpu_kernels"] = gpu_time(launches)
-    spans = [gpu[c.correlation] for c in calls if c.correlation in gpu]
+    parts["graph_launches"] = len(graphs)
+    parts["kernels"] = len(work(launches + graphs))
+    parts["gpu_kernels"] = gpu_time(launches + graphs)
+    spans = work(calls)
     if spans:
         parts["gpu_span"] = max(e for _, e in spans) - min(s for s, _ in spans)
         parts["gpu_idle"] = parts["gpu_span"] - (parts["gpu_h2d"] + parts["gpu_kernels"] + parts["gpu_d2h"])
@@ -108,7 +124,7 @@ def analyze(path: Path) -> dict:
         by_step[text].append((start / NS_PER_MS, end / NS_PER_MS, tid))
 
     calls: dict[int, list[Call]] = {}
-    gpu: dict[int, tuple[float, float]] = {}
+    gpu: dict[int, list[Span]] = {}  # a graph launch's kernels all carry its correlation id
     # A run without CUDA (ONNX Runtime) has none of nsys's CUDA tables.
     tables = {name for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     if "CUPTI_ACTIVITY_KIND_RUNTIME" in tables:
@@ -119,7 +135,7 @@ def analyze(path: Path) -> dict:
     for table in ("CUPTI_ACTIVITY_KIND_KERNEL", "CUPTI_ACTIVITY_KIND_MEMCPY"):
         if table in tables:
             for start, end, corr in db.execute(f"SELECT start, end, correlationId FROM {table}"):
-                gpu[corr] = (start / NS_PER_MS, end / NS_PER_MS)
+                gpu.setdefault(corr, []).append((start / NS_PER_MS, end / NS_PER_MS))
     db.close()
 
     result = {"report": str(path),
@@ -133,6 +149,8 @@ def analyze(path: Path) -> dict:
         result["detect_parts_ms"] = {n: _stats([d[n] for d in detects]) for n in ["total", *names]}
         result["detect_slowest_1pct_ms"] = slowest(detects, names)
         result["kernel_launches_per_detect"] = _stats([d["launches"] for d in detects])
+        result["graph_launches_per_detect"] = _stats([d["graph_launches"] for d in detects])
+        result["kernels_per_detect"] = _stats([d["kernels"] for d in detects])
     return result
 
 

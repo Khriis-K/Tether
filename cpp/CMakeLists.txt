@@ -271,6 +271,7 @@ if(TETHER_BUILD_TESTS)
     tests/test_pipeline_cli_screenshot.cpp
     tests/test_run_settings.cpp
     tests/test_runtime_setting.cpp
+    tests/test_cuda_graph_setting.cpp
     tests/test_search_gate.cpp
     tests/test_stream_writers.cpp
     tests/test_timing.cpp
@@ -284,15 +285,19 @@ if(TETHER_BUILD_TESTS)
   tether_copy_runtime_dlls(tether_tests)
   if(TensorRT_ROOT)
     # The stand-in models' engines, built by trtexec when the model is newer.
-    target_sources(tether_tests PRIVATE tests/test_tensorrt_detector.cpp)
+    target_sources(tether_tests PRIVATE tests/test_tensorrt_detector.cpp tests/test_cuda_graph.cpp)
     set(test_engines ${CMAKE_CURRENT_BINARY_DIR}/test-engines)
-    add_custom_command(OUTPUT ${test_engines}/fixed_736x1280.engine
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${test_engines}
-      COMMAND ${TensorRT_TRTEXEC} --onnx=${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx/fixed_736x1280.onnx
-        --saveEngine=${test_engines}/fixed_736x1280.engine --noTF32 --skipInference > ${test_engines}/trtexec.log
-      DEPENDS tests/onnx/fixed_736x1280.onnx
-      COMMENT "Building the stand-in model's TensorRT engine")
-    add_custom_target(tether_test_engines DEPENDS ${test_engines}/fixed_736x1280.engine)
+    set(test_engine_files)
+    foreach(model fixed_736x1280 brightness_736x1280)
+      add_custom_command(OUTPUT ${test_engines}/${model}.engine
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${test_engines}
+        COMMAND ${TensorRT_TRTEXEC} --onnx=${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx/${model}.onnx
+          --saveEngine=${test_engines}/${model}.engine --noTF32 --skipInference > ${test_engines}/${model}.log
+        DEPENDS tests/onnx/${model}.onnx
+        COMMENT "Building the ${model} stand-in model's TensorRT engine")
+      list(APPEND test_engine_files ${test_engines}/${model}.engine)
+    endforeach()
+    add_custom_target(tether_test_engines DEPENDS ${test_engine_files})
     add_dependencies(tether_tests tether_test_engines)
     target_compile_definitions(tether_tests PRIVATE TETHER_TEST_ENGINES="${test_engines}")
   endif()

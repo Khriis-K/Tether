@@ -1,21 +1,26 @@
-"""tether-runtime-compare: the C++ pipeline on ONNX Runtime against TensorRT, on the same video.
+"""tether-runtime-compare: the C++ pipeline two ways on the same video.
 
-Two checks, both through `tether-pipeline` (headless, sequential):
+`--compare runtimes` (the default) runs ONNX Runtime against TensorRT;
+`--compare cuda-graph` runs TensorRT without its CUDA graph (--no-cuda-graph)
+against TensorRT with it. Two checks, both through `tether-pipeline` (headless):
 
-1. Agreement. Each runtime dumps its detections for every frame (--dump), and
-   every detection scoring at least MIN_SCORE in one runtime must have a
-   partner in the other: the same class, IoU at least MIN_IOU, and scores at
+1. Agreement. Each side dumps its detections for every frame (--dump), and
+   every detection scoring at least MIN_SCORE on one side must have a
+   partner on the other: the same class, IoU at least MIN_IOU, and scores at
    most MAX_SCORE_DIFF apart. MIN_SCORE is the tracker's own threshold, so the
    check covers what the tracker acts on; detections just under it can cross
-   it in either runtime and aren't counted. The runtimes agree when at least
-   MIN_AGREEMENT of those detections have a partner.
-2. Timing. Tracking runs on each runtime for several rounds, the order
-   alternating each round, each run's timing log summarized with tether-timing's
-   summary. The detect step is the model run: for TensorRT it includes copying
-   the prepared frame to the GPU and the rows back.
+   it on either side and aren't counted. The sides agree when at least
+   MIN_AGREEMENT of those detections have a partner. Whether the two dump
+   files are byte-identical is saved too.
+2. Timing. Tracking runs on each side for several rounds, in the --pipeline
+   mode asked for, the order alternating each round, each run's timing log
+   summarized with tether-timing's summary. The detect step is the model run:
+   for TensorRT it includes copying the prepared frame to the GPU and the rows
+   back.
 
-Speedups are ONNX Runtime's time over TensorRT's (above 1: TensorRT is faster).
-The results and every dump and timing log are saved together under --out.
+Speedups are the first side's time over the second's (above 1: the second,
+TensorRT or the CUDA graph, is faster). The results and every dump and timing
+log are saved together under --out.
 """
 
 import argparse
@@ -31,6 +36,11 @@ from tether.pipeline_compare import _run
 from tether.timing import summarize
 
 RUNTIMES = ("onnxruntime", "tensorrt")
+# Each comparison's two sides: (name, --runtime, other tether-pipeline flags).
+COMPARISONS = {
+    "runtimes": (("onnxruntime", "onnxruntime", []), ("tensorrt", "tensorrt", [])),
+    "cuda-graph": (("no-cuda-graph", "tensorrt", ["--no-cuda-graph"]), ("cuda-graph", "tensorrt", [])),
+}
 
 # The tolerance, set before the first comparison on a real model.
 MIN_SCORE = 0.25  # the tracker's MIN_SCORE
@@ -52,17 +62,19 @@ def run_pipeline(cpp_dir: Path, video: str, model: str, runtime: str, extra: lis
 
 
 def agreement(onnxruntime: list[list[Detection]], tensorrt: list[list[Detection]], min_score: float = MIN_SCORE,
-              min_iou: float = MIN_IOU, max_score_diff: float = MAX_SCORE_DIFF) -> dict:
-    """How closely two runtimes' detections agree, frame by frame, checked both ways.
+              min_iou: float = MIN_IOU, max_score_diff: float = MAX_SCORE_DIFF,
+              names: tuple[str, str] = RUNTIMES) -> dict:
+    """How closely two sides' detections agree, frame by frame, checked both ways.
 
-    Each detection at or above `min_score` looks among the other runtime's
+    Each detection at or above `min_score` looks among the other side's
     detections of the same class (at any score) that overlap it by `min_iou`;
     its partner is the one with the closest score, and must be within
-    `max_score_diff`. Partners aren't exclusive: two near-identical boxes in one
-    runtime can share one in the other. Without such a box, it has no partner.
+    `max_score_diff`. Partners aren't exclusive: two near-identical boxes on one
+    side can share one on the other. Without such a box, it has no partner.
+    `names` label the two sides in the result.
     """
     if len(onnxruntime) != len(tensorrt):
-        raise ValueError(f"onnxruntime has {len(onnxruntime)} frames but tensorrt has {len(tensorrt)}")
+        raise ValueError(f"{names[0]} has {len(onnxruntime)} frames but {names[1]} has {len(tensorrt)}")
     checked = partnered = 0
     worst_iou, worst_score_diff, worst_box_diff = 1.0, 0.0, 0.0
     examples = []
@@ -84,7 +96,7 @@ def agreement(onnxruntime: list[list[Detection]], tensorrt: list[list[Detection]
                     worst_score_diff = max(worst_score_diff, score_diff)
                     worst_box_diff = max(worst_box_diff, max(abs(a - b) for a, b in zip(d.box, partner.box)))
                 elif len(examples) < MAX_EXAMPLES:
-                    examples.append({"frame": frame, "runtime": RUNTIMES[side], "box": list(d.box), "score": d.score,
+                    examples.append({"frame": frame, "runtime": names[side], "box": list(d.box), "score": d.score,
                                      "cls": d.cls, "best_iou": best_iou, "score_diff": score_diff})
     return {"frames": len(onnxruntime), "checked": checked, "partnered": partnered,
             "agreement": partnered / checked if checked else 1.0,
@@ -93,7 +105,8 @@ def agreement(onnxruntime: list[list[Detection]], tensorrt: list[list[Detection]
 
 
 def speedup(onnxruntime: dict, tensorrt: dict) -> dict:
-    """ONNX Runtime's time over TensorRT's for FPS, frame time and each step; None where TensorRT's is 0."""
+    """The first side's time over the second's (ONNX Runtime's over TensorRT's, or no graph's over the
+    graph's) for FPS, frame time and each step; None where the second's is 0."""
     def ratio(ort_ms: float, trt_ms: float) -> float | None:
         return ort_ms / trt_ms if trt_ms > 0 else None
 
@@ -106,14 +119,16 @@ def speedup(onnxruntime: dict, tensorrt: dict) -> dict:
 
 def _report(result: dict) -> str:
     a = result["agreement"]
-    lines = [f"{a['frames']} frames of {result['video']}",
+    first, second = result["sides"]
+    lines = [f"{a['frames']} frames of {result['video']}, {first} vs {second}, {result['pipeline']}",
              f"agreement: {a['partnered']}/{a['checked']} detections scoring >= {result['tolerance']['min_score']} "
              f"have a partner ({a['agreement']:.4f}; needs {result['tolerance']['min_agreement']}): "
              f"{'PASS' if result['agrees'] else 'FAIL'}",
              f"  partners: worst score difference {a['worst_partnered_score_diff']:.4f}, "
-             f"worst box corner difference {a['worst_partnered_box_diff_px']:.3f} px"]
+             f"worst box corner difference {a['worst_partnered_box_diff_px']:.3f} px; "
+             f"dumps {'byte-identical' if result['dumps_identical'] else 'differ'}"]
     for i, r in enumerate(result["rounds"], 1):
-        ort, trt, x = r["onnxruntime"], r["tensorrt"], r["speedup"]
+        ort, trt, x = r[first], r[second], r["speedup"]
         lines.append(f"round {i} ({' then '.join(r['order'])}): detect {ort['steps_ms']['detect']['mean']:.2f} -> "
                      f"{trt['steps_ms']['detect']['mean']:.2f} ms ({x['steps']['detect']:.2f}x), "
                      f"FPS {ort['fps']:.1f} -> {trt['fps']:.1f} ({x['fps']:.2f}x)")
@@ -123,7 +138,12 @@ def _report(result: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tether-runtime-compare", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("video", help="video file both runtimes run on")
+    parser.add_argument("video", help="video file both sides run on")
+    parser.add_argument("--compare", choices=sorted(COMPARISONS), default="runtimes",
+                        help="runtimes (default): ONNX Runtime vs TensorRT; cuda-graph: TensorRT without vs with "
+                             "its CUDA graph")
+    parser.add_argument("--pipeline", choices=["sequential", "parallel"], default="sequential",
+                        help="pipeline mode of the timing runs (default sequential); the dumps are sequential")
     parser.add_argument("--model", default=str(DEFAULT_MODEL),
                         help=f"YOLO26 ONNX model, with its TensorRT engine next to it as .engine (default {DEFAULT_MODEL})")
     parser.add_argument("--rounds", type=int, default=2, help="timing pairs to run (default 2)")
@@ -138,30 +158,35 @@ def main(argv: list[str] | None = None) -> int:
 
     out = args.out or REPO / "results" / f"runtime-compare-{datetime.now():%Y%m%d-%H%M%S}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
+    sides = COMPARISONS[args.compare]
+    names = tuple(name for name, _, _ in sides)
     dumps = {}
-    for runtime in RUNTIMES:
-        dumps[runtime] = out.with_name(f"{out.stem}.{runtime}-detections.jsonl")
-        run_pipeline(args.cpp_dir, args.video, args.model, runtime, ["--dump", dumps[runtime]], args.max_frames)
-    agreed = agreement(*(load_detections(dumps[r]) for r in RUNTIMES))
+    for name, runtime, flags in sides:
+        dumps[name] = out.with_name(f"{out.stem}.{name}-detections.jsonl")
+        run_pipeline(args.cpp_dir, args.video, args.model, runtime, [*flags, "--dump", dumps[name]], args.max_frames)
+    agreed = agreement(*(load_detections(dumps[n]) for n in names), names=names)
 
     rounds = []
     for i in range(1, args.rounds + 1):
-        order = list(RUNTIMES) if i % 2 else list(reversed(RUNTIMES))
+        order = list(sides) if i % 2 else list(reversed(sides))
         summaries = {}
-        for runtime in order:
-            log = out.with_name(f"{out.stem}.round{i}-{runtime}-timing.jsonl")
-            run_pipeline(args.cpp_dir, args.video, args.model, runtime, ["--timing", log], args.max_frames)
-            summaries[runtime] = summarize(load_timings(log))
-        ort, trt = summaries["onnxruntime"], summaries["tensorrt"]
-        if ort["frames"] != trt["frames"]:
-            raise SystemExit(f"tether-runtime-compare: error: onnxruntime ran {ort['frames']} frames but tensorrt ran "
-                             f"{trt['frames']}; they should read the same video")
-        rounds.append({"order": order, "onnxruntime": ort, "tensorrt": trt, "speedup": speedup(ort, trt)})
+        for name, runtime, flags in order:
+            log = out.with_name(f"{out.stem}.round{i}-{name}-timing.jsonl")
+            run_pipeline(args.cpp_dir, args.video, args.model, runtime,
+                         [*flags, "--timing", log, "--pipeline", args.pipeline], args.max_frames)
+            summaries[name] = summarize(load_timings(log))
+        a, b = (summaries[n] for n in names)
+        if a["frames"] != b["frames"]:
+            raise SystemExit(f"tether-runtime-compare: error: {names[0]} ran {a['frames']} frames but {names[1]} ran "
+                             f"{b['frames']}; they should read the same video")
+        rounds.append({"order": [name for name, _, _ in order], names[0]: a, names[1]: b, "speedup": speedup(a, b)})
 
     tolerance = {"min_score": MIN_SCORE, "min_iou": MIN_IOU, "max_score_diff": MAX_SCORE_DIFF,
                  "min_agreement": MIN_AGREEMENT}
-    result = {"video": args.video, "model": args.model, "tolerance": tolerance, "agreement": agreed,
-              "agrees": agreed["agreement"] >= MIN_AGREEMENT, "rounds": rounds}
+    identical = dumps[names[0]].read_bytes() == dumps[names[1]].read_bytes()
+    result = {"video": args.video, "model": args.model, "compare": args.compare, "sides": list(names),
+              "pipeline": args.pipeline, "tolerance": tolerance, "agreement": agreed,
+              "agrees": agreed["agreement"] >= MIN_AGREEMENT, "dumps_identical": identical, "rounds": rounds}
     out.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(_report(result))
     print(f"saved {out}")

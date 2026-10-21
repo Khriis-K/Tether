@@ -17,9 +17,11 @@ namespace tether {
 // models/yolo26<size>.onnx for size "n", "s" or "m"; throws std::invalid_argument otherwise.
 std::filesystem::path model_for_size(const std::string& size);
 
-// The speed settings behind a run of `model` in `mode` on `runtime`, for the stats panel.
+// The speed settings behind a run of `model` in `mode` on `runtime` (TensorRT
+// with a CUDA graph unless `cuda_graph` is false), for the stats panel. Only the
+// non-default graph setting is named.
 Settings run_settings(const std::filesystem::path& model, PipelineMode mode = PipelineMode::sequential,
-                      Runtime runtime = Runtime::onnxruntime);
+                      Runtime runtime = Runtime::onnxruntime, bool cuda_graph = true);
 
 // `args` excludes the program name. Exit codes as tether-track: 0 ok, 2 bad
 // arguments, 1 when the source, model or an output file can't be used.

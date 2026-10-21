@@ -61,10 +61,11 @@ bool tensorrt_built();
 // The TensorRT engine built from `model`: the same path ending in .engine.
 std::filesystem::path engine_for_model(const std::filesystem::path& model);
 
-// The detector for `model` on `runtime`; TensorRT loads engine_for_model(model).
-// Throws std::runtime_error when the model or engine can't be loaded, or for
-// TensorRT in a build without it.
+// The detector for `model` on `runtime`; TensorRT loads engine_for_model(model)
+// and replays it from a CUDA graph unless `cuda_graph` is false (ONNX Runtime
+// ignores it). Throws std::runtime_error when the model or engine can't be
+// loaded, or for TensorRT in a build without it.
 std::unique_ptr<Detector> make_detector(Runtime runtime, const std::filesystem::path& model,
-                                        double min_score = DETECTOR_MIN_SCORE);
+                                        double min_score = DETECTOR_MIN_SCORE, bool cuda_graph = true);
 
 }  // namespace tether
