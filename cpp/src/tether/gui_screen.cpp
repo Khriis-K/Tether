@@ -57,7 +57,13 @@ GuiScreen::GuiScreen(const std::string& title, PanelSource panel) : panel_(std::
   ImGui::GetStyle().ScaleAllSizes(scale_);
   fonts_ = load_panel_fonts(*ImGui::GetIO().Fonts, scale_);
   ImGui_ImplGlfw_InitForOpenGL(window_, true);
-  ImGui_ImplOpenGL3_Init("#version 130");
+  if (!ImGui_ImplOpenGL3_Init("#version 130")) {
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    glfwDestroyWindow(window_);
+    glfwTerminate();
+    throw std::runtime_error("can't open a window (ImGui couldn't set up OpenGL)");
+  }
 
   glGenTextures(1, &texture_);
   glBindTexture(GL_TEXTURE_2D, texture_);

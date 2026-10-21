@@ -41,27 +41,35 @@ ImFont* add_font(ImFontAtlas& atlas, const FontFile& file, float size) {
                                     &config);
 }
 
-// A small caps-style heading over each section.
-void heading(const PanelFonts& fonts, const char* text) {
-  ImGui::Dummy({0, ImGui::GetStyle().ItemSpacing.y * 0.5f});
+// Muted text in Plex Mono: labels and headings.
+void label(const PanelFonts& fonts, const char* text) {
   ImGui::PushFont(fonts.mono);
   ImGui::PushStyleColor(ImGuiCol_Text, rgba(MUTED));
   ImGui::TextUnformatted(text);
   ImGui::PopStyleColor();
   ImGui::PopFont();
+}
+
+// `text` on the current line, flush with the right edge, in the current font and colour.
+void right_aligned(const std::string& text) {
+  ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(text.c_str()).x);
+  ImGui::TextUnformatted(text.c_str());
+}
+
+// A small caps-style heading over each section.
+void heading(const PanelFonts& fonts, const char* text) {
+  ImGui::Dummy({0, ImGui::GetStyle().ItemSpacing.y * 0.5f});
+  label(fonts, text);
   ImVec2 at = ImGui::GetCursorScreenPos();
   ImGui::GetWindowDrawList()->AddLine(at, {at.x + ImGui::GetContentRegionAvail().x, at.y}, rgba(RULE));
   ImGui::Dummy({0, 2});
 }
 
-// A label on the left and a number on the right, both in Plex Mono.
-void stat_row(const PanelFonts& fonts, const char* label, const std::string& value) {
-  ImGui::PushFont(fonts.mono);
-  ImGui::PushStyleColor(ImGuiCol_Text, rgba(MUTED));
-  ImGui::TextUnformatted(label);
-  ImGui::PopStyleColor();
-  ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(value.c_str()).x);
-  ImGui::TextUnformatted(value.c_str());
+// A label on the left and a value on the right, in `value_font`.
+void labelled_value(const PanelFonts& fonts, const char* name, const std::string& value, ImFont* value_font) {
+  label(fonts, name);
+  ImGui::PushFont(value_font);
+  right_aligned(value);
   ImGui::PopFont();
 }
 
@@ -72,38 +80,31 @@ void draw_timing(const PanelFonts& fonts, const std::optional<LiveSummary>& stat
   if (stats && stats->fps) std::snprintf(fps, sizeof fps, "%.1f", *stats->fps);
   ImGui::TextUnformatted(stats && stats->fps ? fps : none);
   ImGui::PopFont();
-  ImGui::PushFont(fonts.mono);
-  ImGui::PushStyleColor(ImGuiCol_Text, rgba(MUTED));
-  ImGui::Text("FPS, last %zu frames", stats ? stats->frames : size_t{0});
-  ImGui::PopStyleColor();
-  ImGui::PopFont();
+  label(fonts, ("FPS, last " + std::to_string(stats ? stats->frames : 0) + " frames").c_str());
 
   heading(fonts, "FRAME TIME");
   bool timed = stats && stats->frame_time;
-  stat_row(fonts, "average", timed ? format_ms(stats->frame_time->mean) : none);
-  stat_row(fonts, "worst 1% (P99)", timed ? format_ms(stats->frame_time->p99) : none);
-  stat_row(fonts, "end-to-end delay", stats ? format_ms(stats->end_to_end.mean) : none);
+  labelled_value(fonts, "average", timed ? format_ms(stats->frame_time->mean) : none, fonts.mono);
+  labelled_value(fonts, "worst 1% (P99)", timed ? format_ms(stats->frame_time->p99) : none, fonts.mono);
+  labelled_value(fonts, "end-to-end delay", stats ? format_ms(stats->end_to_end.mean) : none, fonts.mono);
 
   heading(fonts, "STEPS (average)");
   if (!stats) return;
   // One line a step: name, a bar for its share of the time, then the time.
   ImGui::PushFont(fonts.mono);
-  float left = ImGui::GetCursorPosX(), label_w = ImGui::CalcTextSize("capture ").x, value_w = ImGui::CalcTextSize(" 000.0 ms").x;
+  float left = ImGui::GetCursorPosX(), label_w = ImGui::CalcTextSize("capture ").x;
+  float value_w = ImGui::CalcTextSize(" 000.0 ms").x;
   float bar_w = std::max(ImGui::GetContentRegionAvail().x - label_w - value_w, 1.0f);
   float line = ImGui::GetTextLineHeight(), bar_h = line * 0.45f;
   for (const auto& bar : step_bars(*stats)) {
-    ImGui::PushStyleColor(ImGuiCol_Text, rgba(MUTED));
-    ImGui::TextUnformatted(bar.name.c_str());
-    ImGui::PopStyleColor();
+    label(fonts, bar.name.c_str());
     ImGui::SameLine(left + label_w);
     ImVec2 at = ImGui::GetCursorScreenPos();
     at.y += (line - bar_h) / 2;
     ImDrawList* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(at, {at.x + bar_w, at.y + bar_h}, rgba(RULE));
     draw->AddRectFilled(at, {at.x + bar_w * static_cast<float>(bar.share), at.y + bar_h}, rgba(MUTED));
-    std::string value = format_ms(bar.ms);
-    ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(value.c_str()).x);
-    ImGui::TextUnformatted(value.c_str());
+    right_aligned(format_ms(bar.ms));
   }
   ImGui::PopFont();
 }
@@ -132,9 +133,8 @@ void draw_tracks(const PanelFonts& fonts, const std::vector<Track>& tracks, floa
     ImGui::PushFont(fonts.text);
     ImGui::TextUnformatted(row.class_name.c_str());
     ImGui::PopFont();
-    ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(row.status.c_str()).x);
     ImGui::PushStyleColor(ImGuiCol_Text, row.searching ? rgba(ACCENT) : rgba(MUTED));
-    ImGui::TextUnformatted(row.status.c_str());
+    right_aligned(row.status);
     ImGui::PopStyleColor();
   }
   ImGui::PopFont();
@@ -144,15 +144,7 @@ void draw_tracks(const PanelFonts& fonts, const std::vector<Track>& tracks, floa
 
 void draw_settings(const PanelFonts& fonts, const Settings& settings) {
   heading(fonts, "SETTINGS");
-  for (const auto& [label, value] : settings) {
-    ImGui::PushFont(fonts.mono);
-    ImGui::PushStyleColor(ImGuiCol_Text, rgba(MUTED));
-    ImGui::TextUnformatted(label.c_str());
-    ImGui::PopStyleColor();
-    ImGui::PopFont();
-    ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(value.c_str()).x);
-    ImGui::TextUnformatted(value.c_str());
-  }
+  for (const auto& [name, value] : settings) labelled_value(fonts, name.c_str(), value, fonts.text);
 }
 
 }  // namespace
