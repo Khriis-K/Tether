@@ -5,8 +5,9 @@ model per round, in the --pipeline mode asked for. The model order rotates each
 round, so a laptop speeding up or slowing down during the runs doesn't land on
 one model only. Each run's timing log is summarized with tether-timing's
 summary, plus each step's busy share: its total time over the run's wall time.
-In parallel mode the slowest stage, the one that sets the FPS, is near 100%. Each model's exact input shape is read from the model, and each run
-is marked against the spec's speed targets (TARGET_FPS, TARGET_P99_MS).
+In parallel mode the slowest stage, the one that sets the FPS, is near 100%.
+Each model's exact input shape is read from the model, and each run is marked
+against the spec's speed targets (TARGET_FPS, TARGET_P99_MS).
 
 With --accuracy-dir, each model's MOT17 scores are added from
 `<dir>/<prefix><model stem>/results.json` (written by tether-mot17), and the
@@ -73,7 +74,7 @@ def model_row(model: str, input_size: tuple[int, int], runs: list[dict], accurac
         "meets_fps": all(t["fps"] for t in targets),
         "meets_p99": all(t["p99"] for t in targets),
         "meets_targets": all(t["both"] for t in targets),
-        "mot17": accuracy and {k: accuracy["combined"][k] for k in ("HOTA", "IDF1", "IDSW")},
+        "mot17": None if accuracy is None else {k: accuracy["combined"][k] for k in ("HOTA", "IDF1", "IDSW")},
     }
 
 

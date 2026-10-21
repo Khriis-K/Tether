@@ -2,11 +2,11 @@
 
 **Question:** the spec's speed targets (120+ FPS, P99 frame time under 16 ms, on video files) assume YOLO26n at 640. ADR 0002 found that on MOT17 a bigger input mattered far more than a bigger model. With TensorRT and the CUDA graph in place, what does each YOLO26 model (n, s, m) at each input size (640×640, 1280×736) cost in speed, what does it buy in MOT17 accuracy, and which one should ship?
 
-**Answer: ship YOLO26n at 1280×736.** It's the most accurate row that meets both speed targets on the video file: HOTA 41.55 / IDF1 49.33, against 32.74 / 37.05 for today's YOLO26n at 640 (+8.81 HOTA, +12.28 IDF1). It runs the Anti-UAV clip at **124.82–126.18 FPS, P99 9.17–10.45 ms** in parallel mode. That clears 120 FPS by only 4.82–6.18 FPS. **Frame prep is its slowest stage** (busy 99.2–99.3%, detect next at 51.4–51.8%), so **#17 (CUDA frame prep) becomes a go**, per #15's rule.
+**Answer: ship YOLO26n at 1280×736.** It's the most accurate row that meets both speed targets on the video file: HOTA 41.55 / IDF1 49.33, against 32.74 / 37.05 for today's YOLO26n at 640 (+8.81 HOTA, +12.27 IDF1). It runs the Anti-UAV clip at **124.82–126.18 FPS, P99 9.17–10.45 ms** in parallel mode. That clears 120 FPS by only 4.82–6.18 FPS. **Frame prep is its slowest stage** (busy 99.2–99.3%, detect next at 51.4–51.8%), so **#17 (CUDA frame prep) becomes a go**, per #15's rule.
 
 The rest of the table:
-- **Bigger models do help, at both sizes**, more than ADR 0002's two-video sample suggested. At 1280×736, s adds 3.31 HOTA and m adds 5.35 over n. But neither fits the targets: s runs 108.89–110.06 FPS and m 46.77–47.20, both limited by detect (9.02–9.16 and 21.16–21.36 ms). CUDA prep can't speed up a detect-bound row.
-- **YOLO26s at 640 also meets both targets** (149.54–185.11 FPS), with HOTA 37.81, but that's 3.74 below n at 1280×736.
+- **Bigger models do help, at both sizes**, more than ADR 0002's two-video sample suggested. At 1280×736, s adds 3.30 HOTA and m adds 5.34 over n. But neither fits the targets: s runs 108.89–110.06 FPS and m 46.77–47.20, both limited by detect (9.02–9.16 and 21.16–21.36 ms). CUDA prep can't speed up a detect-bound row.
+- **YOLO26s at 640 also meets both targets** (149.54–185.11 FPS), with HOTA 37.81, but that's 3.73 below n at 1280×736.
 - **No row meets either target on MOT17-04.** It's a folder of JPEGs, and decoding them caps every row at 64.53–66.07 FPS (capture busy 99.8–99.9%), except m at 1280×736, which drops to 47.43–47.49 FPS because its detect takes 21.03–21.06 ms. That's the same decode limit #15 and #40 found.
 - **Nothing meets 120 FPS sequentially.** The best is n at 640 on the Anti-UAV clip, at 111.95–112.68 FPS.
 
@@ -77,7 +77,7 @@ All 7 videos, person class, score ≥ 0.25, the official rule, no tracker:
 | m | 41.5% / 87.0% | 60.3% / 82.9% |
 
 - **Input size is still the bigger lever.** n goes from 33.7% to 54.6% recall at 1280×736, a 20.9-point gain, as in ADR 0002.
-- **But model size isn't nothing.** At 640, s adds 6.3 points and m 7.8; at 1280×736, s adds 3.4 and m 5.7. ADR 0002's two-video sample (MOT17-02 and 04) suggested bigger models at 640 "barely" helped; across all 7 videos, s at 640 is worth 5.07 HOTA over n.
+- **But model size isn't nothing.** At 640, s adds 6.2 points and m 7.8; at 1280×736, s adds 3.3 and m 5.6. ADR 0002's two-video sample (MOT17-02 and 04) suggested bigger models at 640 "barely" helped; across all 7 videos, s at 640 is worth 5.07 HOTA over n.
 - **ID switches go up with recall,** because more people are tracked. At 1280×736 there are 700–772 against 493–541 at 640. A raw count of switches isn't normalized by how many people are found, so read it next to HOTA and IDF1, which are.
 
 ## How much of a row-to-row difference is real
@@ -89,25 +89,25 @@ The same tracker on the same model, with detections from ONNX Runtime on the CPU
 | ONNX Runtime (CPU) | 33.13 / 37.62 / 529 | 41.46 / 49.38 / 732 |
 | TensorRT (this table) | 32.74 / 37.05 / 541 | 41.55 / 49.33 / 772 |
 
-The runtimes agree within #16's tolerance (scores within 0.00032), yet HOTA moved by up to 0.39, IDF1 by up to 0.57 and ID switches by 12–40. The tracker's thresholds turn tiny score differences into different decisions. **Treat gaps under about 0.4 HOTA, 0.6 IDF1 or 40 ID switches as noise.** Every gap the recommendation rests on (n at 1280×736 against the other rows that meet the targets: +3.74 HOTA or more) is well outside that.
+The runtimes agree within #16's tolerance (scores within 0.00032), yet HOTA moved by up to 0.39, IDF1 by up to 0.56 and ID switches by 12–40. The tracker's thresholds turn tiny score differences into different decisions. **Treat gaps under about 0.4 HOTA, 0.6 IDF1 or 40 ID switches as noise.** Every gap the recommendation rests on (n at 1280×736 against the other rows that meet the targets: +3.73 HOTA or more) is well outside that.
 
 ## Recommendation
 
 **Ship YOLO26n at 1280×736** (`models/yolo26n_1280x736.onnx` and its `--noTF32` engine), in parallel mode with TensorRT.
 
-- It's the most accurate row that meets both targets on the video file: +8.81 HOTA and +12.28 IDF1 over n at 640, and +3.74 HOTA / +6.05 IDF1 over s at 640, the other row that does.
+- It's the most accurate row that meets both targets on the video file: +8.81 HOTA and +12.27 IDF1 over n at 640, and +3.73 HOTA / +6.05 IDF1 over s at 640, the other row that does.
 - **The margin is thin:** 124.82–126.18 FPS against 120. A slower decoder, a busier CPU or `--show` (which #13 measured at 10.16 and 13.88 ms a frame of draw) would put it under. P99 has more room: 9.17–10.45 ms against 16.
 - **Prep is the slowest stage** for this row on the Anti-UAV clip (busy 99.2–99.3%; capture 74.8–75.2%, detect 51.4–51.8%). **So #17 (CUDA frame prep) is a go**: it attacks exactly the step that sets this row's FPS. #15 put the ceiling with prep removed at 156.8–160.0 FPS, with detect next. On MOT17-04, capture (JPEG decode) is the slowest stage for every row but m at 1280×736, so CUDA prep won't change FPS there.
 - **ADR 0002's split goes away:** the benchmark detection set (n at 1280×736) and the shipped detector would be the same model.
 
 What it costs and what's left open:
 - **The spec's targets were written for n at 640.** If this ships, the SPEC "Targets" line, `DEFAULT_MODEL`/`--model-size` and ADR 0002 need updating. That isn't done here, because the choice is the user's.
-- **s at 1280×736 is +3.31 HOTA for about 15 FPS** (108.89–110.06), bounded by detect, not prep. Only a faster detect gets it under the targets. An FP16 export is the obvious candidate (#16 noted TensorRT 11 needs an FP16 ONNX for that). It's untried, and it would need its own agreement check.
+- **s at 1280×736 is +3.30 HOTA, but runs 108.89–110.06 FPS** against 124.82–126.18, bounded by detect, not prep. Only a faster detect gets it under the targets. An FP16 export is the obvious candidate (#16 noted TensorRT 11 needs an FP16 ONNX for that). It's untried, and it would need its own agreement check.
 - **n at 640 stays the fastest** (186.27 FPS in its fast round, P99 6.77 ms) if the margin above ever matters more than accuracy.
 
 ## Caveats
 
-- **One laptop, one Anti-UAV clip, two rounds each.** The first round ran slow for the first two models (see above). The FPS margin for the recommended row (4.02–5.15% over the target) is far smaller than the first-round slowdown seen here (141.80 against 186.27 FPS for n at 640), so it should be re-measured after any change upstream of detect.
+- **One laptop, one Anti-UAV clip, two rounds each.** The first round ran slow for the first two models (see above). The FPS margin for the recommended row (4.01–5.15% over the target) is far smaller than the first-round slowdown seen here (141.80 against 186.27 FPS for n at 640), so it should be re-measured after any change upstream of detect.
 - **MOT17 is the tuning set** (no held-out split), as everywhere in Tether. The accuracy columns compare detectors under the same tracker, which is fair, but the absolute numbers are on data the tracker settings were chosen on.
 - **Accuracy comes from the TensorRT dumps** of the shipped runtime, so the n rows differ slightly from the ONNX Runtime numbers in `mot17-bytetrack.md` and `edge-rule.md` (table above).
 - **Headless and on video files only.** `--show`, `--record` and the webcam weren't timed with any of these models.

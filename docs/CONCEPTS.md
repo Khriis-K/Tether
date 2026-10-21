@@ -206,7 +206,7 @@ Give one stage of the system information it couldn't really have, and measure ho
 ### Noise floor (how big a difference is real)
 The size of change you get from things that shouldn't matter. A difference between two rows smaller than that can't be credited to what you changed. Measure it by changing something irrelevant and seeing how far the score moves.
 
-**In Tether:** the same YOLO26n model run by ONNX Runtime on the CPU and by TensorRT on the GPU gives detections that agree to 0.00032 in score, yet the same tracker's MOT17 score moved by up to 0.39 HOTA, 0.57 IDF1 and 12–40 ID switches. A threshold turns a tiny score difference into a different decision, and the decision compounds over frames. So in the model-size table (#18), gaps under about 0.4 HOTA or 40 ID switches are treated as noise (`docs/benchmarks/model-size.md`).
+**In Tether:** the same YOLO26n model run by ONNX Runtime on the CPU and by TensorRT on the GPU gives detections that agree to 0.00032 in score, yet the same tracker's MOT17 score moved by up to 0.39 HOTA, 0.56 IDF1 and 12–40 ID switches. A threshold turns a tiny score difference into a different decision, and the decision compounds over frames. So in the model-size table (#18), gaps under about 0.4 HOTA, 0.6 IDF1 or 40 ID switches are treated as noise (`docs/benchmarks/model-size.md`).
 
 **Gotcha:** two runs of the same thing can match exactly, as these do (the scoring is deterministic for a given detection file), and still hide this noise. The noise only shows up when an input changes by an "irrelevant" amount.
 
