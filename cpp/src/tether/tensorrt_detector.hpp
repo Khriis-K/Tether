@@ -21,7 +21,8 @@ class TensorRtDetector : public Detector {
   // input and one [1, N, 6] float output. With `cuda_graph`, the engine's
   // kernels are captured into a CUDA graph here, once, and each detect replays
   // it with one launch; an engine that can't be captured falls back to
-  // launching its kernels directly, with a warning on stderr.
+  // launching its kernels directly, with a warning on stderr. The uncaptured
+  // run before the capture must work: an engine that can't run at all throws.
   explicit TensorRtDetector(const std::filesystem::path& engine, double min_score = DETECTOR_MIN_SCORE,
                             bool cuda_graph = true);
   ~TensorRtDetector() override;

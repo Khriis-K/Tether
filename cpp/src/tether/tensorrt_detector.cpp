@@ -110,7 +110,10 @@ struct TensorRtDetector::Engine {
     check(cudaMemsetAsync(input, 0, input_elements * sizeof(float), stream), "cudaMemsetAsync");
     if (!context->enqueueV3(stream)) throw std::runtime_error("TensorRT failed to run the engine");
     check(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
-    check(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal), "cudaStreamBeginCapture");
+    if (cudaError_t began = cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal); began != cudaSuccess) {
+      cudaGetLastError();
+      return cudaGetErrorString(began);
+    }
     bool queued = context->enqueueV3(stream);
     cudaGraph_t recorded = nullptr;
     cudaError_t ended = cudaStreamEndCapture(stream, &recorded);  // always end it, or the stream stays capturing

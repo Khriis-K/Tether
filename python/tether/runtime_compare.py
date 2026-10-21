@@ -35,12 +35,12 @@ from tether.parity import DEFAULT_CPP_DIR, REPO, cpp_binary
 from tether.pipeline_compare import _run
 from tether.timing import summarize
 
-RUNTIMES = ("onnxruntime", "tensorrt")
 # Each comparison's two sides: (name, --runtime, other tether-pipeline flags).
 COMPARISONS = {
     "runtimes": (("onnxruntime", "onnxruntime", []), ("tensorrt", "tensorrt", [])),
     "cuda-graph": (("no-cuda-graph", "tensorrt", ["--no-cuda-graph"]), ("cuda-graph", "tensorrt", [])),
 }
+RUNTIMES = tuple(name for name, _, _ in COMPARISONS["runtimes"])
 
 # The tolerance, set before the first comparison on a real model.
 MIN_SCORE = 0.25  # the tracker's MIN_SCORE
@@ -61,7 +61,7 @@ def run_pipeline(cpp_dir: Path, video: str, model: str, runtime: str, extra: lis
     _run(command, f"tether-pipeline --runtime {runtime}")
 
 
-def agreement(onnxruntime: list[list[Detection]], tensorrt: list[list[Detection]], min_score: float = MIN_SCORE,
+def agreement(first: list[list[Detection]], second: list[list[Detection]], min_score: float = MIN_SCORE,
               min_iou: float = MIN_IOU, max_score_diff: float = MAX_SCORE_DIFF,
               names: tuple[str, str] = RUNTIMES) -> dict:
     """How closely two sides' detections agree, frame by frame, checked both ways.
@@ -73,12 +73,12 @@ def agreement(onnxruntime: list[list[Detection]], tensorrt: list[list[Detection]
     side can share one on the other. Without such a box, it has no partner.
     `names` label the two sides in the result.
     """
-    if len(onnxruntime) != len(tensorrt):
-        raise ValueError(f"{names[0]} has {len(onnxruntime)} frames but {names[1]} has {len(tensorrt)}")
+    if len(first) != len(second):
+        raise ValueError(f"{names[0]} has {len(first)} frames but {names[1]} has {len(second)}")
     checked = partnered = 0
     worst_iou, worst_score_diff, worst_box_diff = 1.0, 0.0, 0.0
     examples = []
-    for frame, both in enumerate(zip(onnxruntime, tensorrt)):
+    for frame, both in enumerate(zip(first, second)):
         for side in (0, 1):
             here, there = both[side], both[1 - side]
             for d in here:
@@ -98,22 +98,22 @@ def agreement(onnxruntime: list[list[Detection]], tensorrt: list[list[Detection]
                 elif len(examples) < MAX_EXAMPLES:
                     examples.append({"frame": frame, "runtime": names[side], "box": list(d.box), "score": d.score,
                                      "cls": d.cls, "best_iou": best_iou, "score_diff": score_diff})
-    return {"frames": len(onnxruntime), "checked": checked, "partnered": partnered,
+    return {"frames": len(first), "checked": checked, "partnered": partnered,
             "agreement": partnered / checked if checked else 1.0,
             "worst_iou": worst_iou, "worst_partnered_score_diff": worst_score_diff,
             "worst_partnered_box_diff_px": worst_box_diff, "without_partner": examples}
 
 
-def speedup(onnxruntime: dict, tensorrt: dict) -> dict:
+def speedup(first: dict, second: dict) -> dict:
     """The first side's time over the second's (ONNX Runtime's over TensorRT's, or no graph's over the
     graph's) for FPS, frame time and each step; None where the second's is 0."""
-    def ratio(ort_ms: float, trt_ms: float) -> float | None:
-        return ort_ms / trt_ms if trt_ms > 0 else None
+    def ratio(first_ms: float, second_ms: float) -> float | None:
+        return first_ms / second_ms if second_ms > 0 else None
 
     return {
-        "fps": tensorrt["fps"] / onnxruntime["fps"],
-        "frame_time": ratio(onnxruntime["frame_time_ms"]["mean"], tensorrt["frame_time_ms"]["mean"]),
-        "steps": {s: ratio(onnxruntime["steps_ms"][s]["mean"], tensorrt["steps_ms"][s]["mean"]) for s in STEPS},
+        "fps": second["fps"] / first["fps"],
+        "frame_time": ratio(first["frame_time_ms"]["mean"], second["frame_time_ms"]["mean"]),
+        "steps": {s: ratio(first["steps_ms"][s]["mean"], second["steps_ms"][s]["mean"]) for s in STEPS},
     }
 
 
@@ -128,10 +128,10 @@ def _report(result: dict) -> str:
              f"worst box corner difference {a['worst_partnered_box_diff_px']:.3f} px; "
              f"dumps {'byte-identical' if result['dumps_identical'] else 'differ'}"]
     for i, r in enumerate(result["rounds"], 1):
-        ort, trt, x = r[first], r[second], r["speedup"]
-        lines.append(f"round {i} ({' then '.join(r['order'])}): detect {ort['steps_ms']['detect']['mean']:.2f} -> "
-                     f"{trt['steps_ms']['detect']['mean']:.2f} ms ({x['steps']['detect']:.2f}x), "
-                     f"FPS {ort['fps']:.1f} -> {trt['fps']:.1f} ({x['fps']:.2f}x)")
+        a, b, x = r[first], r[second], r["speedup"]
+        lines.append(f"round {i} ({' then '.join(r['order'])}): detect {a['steps_ms']['detect']['mean']:.2f} -> "
+                     f"{b['steps_ms']['detect']['mean']:.2f} ms ({x['steps']['detect']:.2f}x), "
+                     f"FPS {a['fps']:.1f} -> {b['fps']:.1f} ({x['fps']:.2f}x)")
     return "\n".join(lines)
 
 
