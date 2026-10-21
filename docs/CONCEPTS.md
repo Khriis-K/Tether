@@ -203,6 +203,13 @@ Give one stage of the system information it couldn't really have, and measure ho
 
 **Gotcha:** an oracle's number is never a result. It's off by default, never counts toward a target, and never ships: on general footage "one object" is false, and with one person in view it would hand a lost ID to anyone who walks in. Also check it actually fires where you run it: on MOT17 its condition never holds, so it scores the same as the default.
 
+### Noise floor (how big a difference is real)
+The size of change you get from things that shouldn't matter. A difference between two rows smaller than that can't be credited to what you changed. Measure it by changing something irrelevant and seeing how far the score moves.
+
+**In Tether:** the same YOLO26n model run by ONNX Runtime on the CPU and by TensorRT on the GPU gives detections that agree to 0.00032 in score, yet the same tracker's MOT17 score moved by up to 0.39 HOTA, 0.57 IDF1 and 12–40 ID switches. A threshold turns a tiny score difference into a different decision, and the decision compounds over frames. So in the model-size table (#18), gaps under about 0.4 HOTA or 40 ID switches are treated as noise (`docs/benchmarks/model-size.md`).
+
+**Gotcha:** two runs of the same thing can match exactly, as these do (the scoring is deterministic for a given detection file), and still hide this noise. The noise only shows up when an input changes by an "irrelevant" amount.
+
 ### Train/test leakage
 Scoring a model on data it was trained on. The numbers look great and mean nothing, like grading a student on the exact homework they studied. Published MOT17 trackers often use detectors trained on MOT17's train videos. Tether evaluates *on* those videos, so it can't use such a detector without a held-out split.
 
@@ -262,8 +269,12 @@ Turning a raw camera frame into what the model expects: resize to the input size
 ### Input size (and letterboxing)
 The image size the model actually sees. A 1920×1080 frame is shrunk to fit the input (e.g. 640×640) with gray padding filling the leftover space, which is called letterboxing. Shrinking 3× turns a 60 px person into a 20 px smudge the model can't find. On MOT17, going from 640 to 1280 input more than doubled recall, while bigger models at 640 barely helped: a bigger brain doesn't help if the eyes can't see. A square input also wastes pixels on padding for wide frames, so a rectangle (e.g. 1280×736) does the same job cheaper.
 
+**In Tether:** on all 7 MOT17 videos, n goes from 33.7% recall at 640 to 54.6% at 1280×736. A bigger model adds less but isn't worthless: at 640, s reaches 40.0% and m 41.5%; at 1280×736, 58.0% and 60.3% (`docs/benchmarks/model-size.md`, #18).
+
+**Gotcha:** ADR 0002's "bigger models barely help" came from two videos. On all seven, s at 640 is worth 5.07 HOTA over n at 640. Input size is the bigger lever, not the only one.
+
 ### Benchmark detection set vs. shipped detector
-Two separate choices. The **benchmark detection set** is what a tracker comparison runs on: detections are dumped to a file once, so it can come from a slow, strong detector, and it should, so the trackers get enough signal to be compared. The **shipped detector** is what runs live, so it has to be fast. Tether benchmarks on YOLO26n at 1280×736 and ships YOLO26n at 640 (for now), and reports MOT17 for both. See ADR 0002.
+Two separate choices. The **benchmark detection set** is what a tracker comparison runs on: detections are dumped to a file once, so it can come from a slow, strong detector, and it should, so the trackers get enough signal to be compared. The **shipped detector** is what runs live, so it has to be fast. Tether benchmarks on YOLO26n at 1280×736 and ships YOLO26n at 640 (for now), and reports MOT17 for both. See ADR 0002. #18 recommends shipping YOLO26n at 1280×736 too: on TensorRT in parallel mode it meets the speed targets on the Anti-UAV clip (124.82–126.18 FPS), so the two would be the same model (`docs/benchmarks/model-size.md`).
 
 ---
 
@@ -359,7 +370,7 @@ A recording of GPU work. Put a stream into capture mode, issue the work as usual
 ### Busy share (finding the bottleneck stage)
 A stage's total working time divided by the run's wall time. In a pipeline where each stage has its own thread, the slowest stage is busy nearly all the time, and the others wait. FPS is set by that stage, so speeding up any other one changes nothing.
 
-**In Tether:** at 640 with TensorRT, capture was busy 99.2–99.8% and prep 22.2–64.7%, so a faster prep couldn't raise FPS. At 1280×736 on the Anti-UAV clip, prep was busy 99.1%: the bottleneck. `busy_share` in `tools/nsight_steps.py` computes it from a timing log or a profile.
+**In Tether:** at 640 with TensorRT, capture was busy 99.2–99.8% and prep 22.2–64.7%, so a faster prep couldn't raise FPS. At 1280×736 on the Anti-UAV clip, prep was busy 99.1%: the bottleneck. `busy_share` in `tools/nsight_steps.py` computes it from a timing log or a profile, and `tether-model-compare` names each row's slowest stage. In the model-size table (#18) the bottleneck moves with the model: capture for n and s at 640, prep for n at 1280×736, detect for m at 640 and for s and m at 1280×736. So the same CUDA-prep work helps one row and does nothing for its neighbour.
 
 ---
 
