@@ -95,8 +95,8 @@ pip install -e .[demo,eval,bytetrack]
 python tools/export_model.py --model n --size 1280x736
 tether-mot17 data/MOT17 --model models/yolo26n_1280x736.onnx --name tether_yolo26n_1280x736
 tether-mot17 data/MOT17 --model models/yolo26n_1280x736.onnx --name bytetrack_yolo26n_1280x736 --tracker tether-bytetrack
-tether-mot17 data/MOT17 --name tether_yolo26n
-tether-mot17 data/MOT17 --name bytetrack_yolo26n --tracker tether-bytetrack
+tether-mot17 data/MOT17 --model models/yolo26n.onnx --name tether_yolo26n
+tether-mot17 data/MOT17 --model models/yolo26n.onnx --name bytetrack_yolo26n --tracker tether-bytetrack
 python tools/detector_recall.py data/MOT17 results/mot17/detections/yolo26n_1280x736
 python tools/detector_recall.py data/MOT17 results/mot17/detections/yolo26n
 ```
@@ -105,7 +105,7 @@ Diagnostics (the no-low-score-pass rows, and recall at score ≥ 0.1):
 
 ```
 tether-mot17 data/MOT17 --model models/yolo26n_1280x736.onnx --name bytetrack-nolow_yolo26n_1280x736 --tracker "tether-bytetrack --no-low-score-pass"
-tether-mot17 data/MOT17 --name bytetrack-nolow_yolo26n --tracker "tether-bytetrack --no-low-score-pass"
+tether-mot17 data/MOT17 --model models/yolo26n.onnx --name bytetrack-nolow_yolo26n --tracker "tether-bytetrack --no-low-score-pass"
 python tools/detector_recall.py data/MOT17 results/mot17/detections/yolo26n_1280x736 --min-score 0.1 --work-dir results/mot17/min_score_0.1
 ```
 

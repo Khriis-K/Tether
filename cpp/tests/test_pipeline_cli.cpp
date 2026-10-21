@@ -47,9 +47,9 @@ std::vector<nlohmann::json> json_lines(const std::filesystem::path& path) {
 }  // namespace
 
 TEST(ModelForSize, PicksTheYolo26ModelOfThatSize) {
-  EXPECT_EQ(model_for_size("n"), std::filesystem::path("models/yolo26n.onnx"));
-  EXPECT_EQ(model_for_size("s"), std::filesystem::path("models/yolo26s.onnx"));
-  EXPECT_EQ(model_for_size("m"), std::filesystem::path("models/yolo26m.onnx"));
+  EXPECT_EQ(model_for_size("n"), std::filesystem::path("models/yolo26n_1280x736.onnx"));
+  EXPECT_EQ(model_for_size("s"), std::filesystem::path("models/yolo26s_1280x736.onnx"));
+  EXPECT_EQ(model_for_size("m"), std::filesystem::path("models/yolo26m_1280x736.onnx"));
   EXPECT_THROW(model_for_size("x"), std::invalid_argument);
 }
 

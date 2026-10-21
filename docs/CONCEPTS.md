@@ -203,6 +203,13 @@ Give one stage of the system information it couldn't really have, and measure ho
 
 **Gotcha:** an oracle's number is never a result. It's off by default, never counts toward a target, and never ships: on general footage "one object" is false, and with one person in view it would hand a lost ID to anyone who walks in. Also check it actually fires where you run it: on MOT17 its condition never holds, so it scores the same as the default.
 
+### Noise floor (how big a difference is real)
+The size of change you get from things that shouldn't matter. A difference between two rows smaller than that can't be credited to what you changed. Measure it by changing something irrelevant and seeing how far the score moves.
+
+**In Tether:** the same YOLO26n model run by ONNX Runtime on the CPU and by TensorRT on the GPU gives detections that agree to 0.00032 in score, yet the same tracker's MOT17 score moved by up to 0.39 HOTA, 0.56 IDF1 and 12–40 ID switches. A threshold turns a tiny score difference into a different decision, and the decision compounds over frames. So in the model-size table (#18), gaps under about 0.4 HOTA, 0.6 IDF1 or 40 ID switches are treated as noise (`docs/benchmarks/model-size.md`).
+
+**Gotcha:** two runs of the same thing can match exactly, as these do (the scoring is deterministic for a given detection file), and still hide this noise. The noise only shows up when an input changes by an "irrelevant" amount.
+
 ### Train/test leakage
 Scoring a model on data it was trained on. The numbers look great and mean nothing, like grading a student on the exact homework they studied. Published MOT17 trackers often use detectors trained on MOT17's train videos. Tether evaluates *on* those videos, so it can't use such a detector without a held-out split.
 
@@ -227,6 +234,29 @@ Both run an ONNX model.
 - **ONNX Runtime** is general-purpose, easy to set up, and runs almost anywhere (including Android later).
 - **TensorRT** is NVIDIA-only. It compiles the model specifically for *your* GPU (fusing layers, picking the fastest kernels, using lower precision), so it's usually much faster but less portable.
 
+In Tether: both sit behind the same `Detector` interface, and `tether-pipeline --runtime onnxruntime|tensorrt` picks one. ONNX Runtime runs on the CPU (its CPU provider), TensorRT on the GPU, so the comparison is CPU against GPU, not two GPU runtimes.
+
+### TensorRT engine
+What TensorRT turns an ONNX model into: a compiled plan (`.engine` or `.plan` file) holding the layers it fused and the GPU kernels it timed as fastest. Building one took 67–90 s for YOLO26n here; after that the pipeline only loads it.
+
+In Tether: built once per machine and input size with `trtexec --onnx=models/yolo26n_1280x736.onnx --saveEngine=models/yolo26n_1280x736.engine --noTF32` (the shipped model; `yolo26n.onnx`, the 640 model, the same way), and loaded from next to the model (README, "TensorRT runtime").
+
+Gotcha: an engine is tied to the GPU model, the TensorRT version and the input size it was built with. That's why engines stay out of git, and why each model × input size needs its own. An engine from another TensorRT version is refused when it loads (`tether-pipeline` then says to rebuild it); one built on a different GPU may load with only a warning, so treat engines as per-machine build output.
+
+### Strongly typed network (precision from the model)
+TensorRT 11 takes each layer's precision from the model's own types, instead of picking lower precision on its own (`trtexec` no longer has `--fp16`). A float32 ONNX model gives a float32 engine. TF32, a float32 mode of the GPU's matrix units that keeps fewer mantissa bits, is allowed by default (`--noTF32` turns it off).
+
+In Tether: engines are built with `--noTF32`, so TensorRT runs the same plain float32 model as ONNX Runtime, and the speedup is from compilation and the GPU, not from lower precision. With TF32 on, 0.66% (640) and 1.05% (1280×736) of MOT17-04's detections came back with scores more than 0.02 off ONNX Runtime's (up to 0.315), enough to fail the agreement check at 1280×736. With it off, the worst score difference was 0.00032, and TensorRT's detect time changed by −0.054 to +0.341 ms a frame (`docs/benchmarks/tensorrt-runtime.md`). Running FP16 would need an FP16 ONNX export.
+
+Gotcha: TF32 is on by default and the build log only says "Precision: Strongly Typed", so it's easy to miss. And even plain float32 isn't bit-identical across runtimes: kernels add numbers in a different order, so boxes and scores differ in the last digits and need a tolerance (see [Detection agreement](#detection-agreement-between-runtimes)).
+
+### Detection agreement (between runtimes)
+How to say two runtimes give "the same" detections when the numbers can't match exactly. Each detection one runtime finds looks for a partner in the other: same class, boxes overlapping by a high IoU, scores close. Among the boxes that overlap enough, take the closest score, or two near-identical boxes on one object can fail against the wrong twin. Checked both ways, so neither runtime can drop or invent boxes unnoticed.
+
+In Tether: `tether-runtime-compare` checks detections scoring at least 0.25 (the tracker's threshold), and a partner needs IoU ≥ 0.95 and scores within 0.02. The runtimes agree when at least 99% of those detections have one. The tolerance was set before the first comparison on the real model.
+
+Gotcha: only count detections above a threshold, and let partners come from below it. A box scoring 0.251 in one runtime and 0.249 in the other is the same detection, and a check that thresholds both sides would call it missing.
+
 ### CUDA kernel
 A function that runs on the GPU across thousands of threads at once. It's a natural fit for per-pixel work like resizing and color conversion.
 
@@ -239,8 +269,14 @@ Turning a raw camera frame into what the model expects: resize to the input size
 ### Input size (and letterboxing)
 The image size the model actually sees. A 1920×1080 frame is shrunk to fit the input (e.g. 640×640) with gray padding filling the leftover space, which is called letterboxing. Shrinking 3× turns a 60 px person into a 20 px smudge the model can't find. On MOT17, going from 640 to 1280 input more than doubled recall, while bigger models at 640 barely helped: a bigger brain doesn't help if the eyes can't see. A square input also wastes pixels on padding for wide frames, so a rectangle (e.g. 1280×736) does the same job cheaper.
 
+**In Tether:** on all 7 MOT17 videos, n goes from 33.7% recall at 640 to 54.6% at 1280×736. A bigger model adds less but isn't worthless: at 640, s reaches 40.0% and m 41.5%; at 1280×736, 58.0% and 60.3% (`docs/benchmarks/model-size.md`, #18).
+
+**Gotcha:** ADR 0002's "bigger models barely help" came from two videos. On all seven, s at 640 is worth 5.07 HOTA over n at 640. Input size is the bigger lever, not the only one.
+
 ### Benchmark detection set vs. shipped detector
-Two separate choices. The **benchmark detection set** is what a tracker comparison runs on: detections are dumped to a file once, so it can come from a slow, strong detector, and it should, so the trackers get enough signal to be compared. The **shipped detector** is what runs live, so it has to be fast. Tether benchmarks on YOLO26n at 1280×736 and ships YOLO26n at 640 (for now), and reports MOT17 for both. See ADR 0002.
+Two separate choices. The **benchmark detection set** is what a tracker comparison runs on: detections are dumped to a file once, so it can come from a slow, strong detector, and it should, so the trackers get enough signal to be compared. The **shipped detector** is what runs live, so it has to be fast. Tether benchmarked on YOLO26n at 1280×736 while it shipped YOLO26n at 640 (ADR 0002). Once #18 measured both on TensorRT and #17 moved frame prep to the GPU, the 1280×736 model shipped too (ADR 0003: 195.45–195.86 FPS on the Anti-UAV clip). The two are now the same model, and MOT17 still reports 640 as a second row.
+
+**Gotcha:** "shipped" means the model, not a whole set of defaults. The runtime, prep and pipeline defaults stay ONNX Runtime, CPU and sequential, which run anywhere, and on them the 1280×736 model is 2.20–2.29× slower to detect than 640. The speed targets apply only to the opt-in GPU configuration.
 
 ---
 
@@ -308,9 +344,44 @@ Timing a single piece of code in isolation, away from everything around it, so i
 ### Profiling (Nsight Systems)
 Measuring where time actually goes before optimizing. Nsight Systems is NVIDIA's timeline profiler: it shows CPU threads, GPU kernels, and memory copies side by side.
 
-**In Tether:** the rule is to profile *before* writing the CUDA kernel, to prove frame prep is a real bottleneck instead of assuming it.
+**In Tether:** the rule is to profile *before* writing the CUDA kernel, to prove frame prep is a real bottleneck instead of assuming it. #15 did, with the `nsys` CLI on the parallel pipeline (`docs/benchmarks/nsight-profile.md`). At 640 input (the shipped size then), prep was never the slowest stage: capture was. Inside TensorRT's detect, the GPU was idle most of the time, waiting on [kernel launches](#kernel-launch-overhead-and-cuda-graphs). `tools/nsight_steps.py` turns a capture's SQLite export into per-step and per-part numbers.
+
+**Gotcha:** the profiler changes what it measures. Tracing every CUDA call added 0.67–1.49 ms to TensorRT's detect step, enough to make detect the slowest stage on the Anti-UAV clip when, without the profiler, capture is. So the profile shows what's *inside* a step, and runs without the profiler show how long each step takes.
+
+### NVTX (named ranges on a profiler timeline)
+NVIDIA's tiny annotation API: push a named range when a piece of code starts and pop it when it ends, and Nsight Systems draws it as a labelled bar on that thread's timeline. With no profiler attached, the calls do nothing.
+
+**In Tether:** `StepRange` in `pipeline.cpp` marks capture, prep, detect, track and draw, in both pipeline modes. It's only compiled in with TensorRT (which brings the CUDA toolkit's header-only NVTX).
+
+**Gotcha:** libraries use NVTX too. TensorRT marks every layer, 27,383 NVTX events in a 100-frame trial run, so profile with `--nvtx-domain-include=default` to keep only your own ranges.
+
+### Kernel launch overhead (and CUDA graphs)
+Every GPU kernel is started by a call from the CPU, and each call costs microseconds. A model made of hundreds of small kernels can spend longer *launching* than the GPU spends running them, and the GPU sits idle in between. A CUDA graph records the whole sequence of launches once and replays it with one call.
+
+**In Tether:** TensorRT's YOLO26n engine launches 217 kernels per frame at 640. Profiled, the CPU took 5.81–6.10 ms to launch them while the GPU computed for 1.47–1.53 ms. `trtexec` on the same engine took 4.04–4.06 ms to enqueue without a graph and 0.028–0.029 ms with one. The launch time also explains TensorRT's wide P99: in the slowest 1% of frames, the kernels took the same time and the launches took about twice as long. A [CUDA graph](#cuda-graph-capture-once-replay-each-frame) took the launch to 0.407–0.438 ms (#40).
+
+**Gotcha:** "faster GPU" won't fix a launch-bound model. Detect barely grew from 640 to 1280×736 for exactly this reason: the kernels got slower, the launches didn't.
+
+### CUDA graph (capture once, replay each frame)
+A recording of GPU work. Put a stream into capture mode, issue the work as usual (kernel launches, copies), end the capture, and CUDA hands back a graph of everything that was issued instead of running it. Instantiate the graph once, and each `cudaGraphLaunch` runs the whole recording with one call. It replays the same kernels with the same arguments and the same memory addresses, so the buffers have to stay where they were.
+
+**In Tether:** `TensorRtDetector` captures one `enqueueV3` on its own stream at start-up and replays it every frame; the copies in and out stay outside the graph (#40, `docs/benchmarks/cuda-graph.md`). At 640, detect went from 5.10–6.37 ms to 2.32–2.97 ms with byte-identical detections. `--no-cuda-graph` turns it off. If capture fails, it warns and launches directly.
+
+**Gotcha:** capture has rules. It needs a stream of your own (not the default stream), and work that can't be recorded fails the capture, so run the engine once *before* capturing: TensorRT does its one-off setup on the first run. Always end the capture, even when the recorded call failed, or the stream stays stuck in capture mode. And a graph only saves *launch* time: in parallel mode, where FPS is set by the slowest stage, a 2× faster detect raised FPS 1.02–1.10×, because decoding was slower. Profile with `nsys --cuda-graph-trace=node` to see the kernels inside a graph; by default Nsight shows the graph as one block.
+
+### Busy share (finding the bottleneck stage)
+A stage's total working time divided by the run's wall time. In a pipeline where each stage has its own thread, the slowest stage is busy nearly all the time, and the others wait. FPS is set by that stage, so speeding up any other one changes nothing.
+
+**In Tether:** at 640 with TensorRT, capture was busy 99.2–99.8% and prep 22.2–64.7%, so a faster prep couldn't raise FPS. At 1280×736 on the Anti-UAV clip, prep was busy 99.1%: the bottleneck. `busy_share` in `tools/nsight_steps.py` computes it from a timing log or a profile, and `tether-model-compare` names each row's slowest stage. In the model-size table (#18) the bottleneck moves with the model: capture for n and s at 640, prep for n at 1280×736, detect for m at 640 and for s and m at 1280×736. So the same CUDA-prep work helps one row and does nothing for its neighbour. #17 bore that out: CUDA prep raised the n-at-1280×736 row from 126.63–127.71 to 195.45–195.86 FPS on the Anti-UAV clip, where capture then became the slowest stage (busy 99.7%), and changed the capture-bound rows by 0.98–1.02×.
 
 ---
+
+### Keeping the frame on the GPU (no round trip through the CPU)
+Data crosses between the CPU's memory and the GPU's over PCIe, which is far slower than either memory. A copy out of ordinary (pageable) memory is slower again: the driver first copies it into a locked staging buffer. So when one GPU step feeds another, the result should stay in GPU memory, and only what the CPU really needs should come back.
+
+**In Tether:** CPU frame prep built an 11.3 MB float blob for the 1280×736 input and TensorRT's detect uploaded it every frame (1.071 ms of GPU time, profiled). CUDA frame prep (#17, `--prep cuda`) uploads the 6.2 MB 8-bit frame instead, builds the blob on the GPU in one kernel (46 µs), and hands TensorRT a pointer to it. Detect then fills the engine's input with a 15.9 µs copy within the GPU, and only the 300 output rows come back. Prep went 9.19–9.21× faster on the Anti-UAV clip at 1280×736, detect 1.45–1.47× (`docs/benchmarks/cuda-prep.md`).
+
+**Gotcha:** a [CUDA graph](#cuda-graph-capture-once-replay-each-frame) recorded the engine's input address, so the blob can't simply be handed over by pointer: either copy it into the engine's fixed buffer (what Tether does), capture a graph per buffer, or have prep write into the engine's buffer. The last one breaks the parallel pipeline, which prepares frame N+1 while detect still reads frame N. Also, uploading the 8-bit frame only moves fewer bytes than uploading the float blob when the input is big: at 640 the blob (4.9 MB) is smaller than the frame (6.2 MB), which is part of why CUDA prep's speedup there is smaller (2.74–4.73×).
 
 ## Python vs. C++
 
@@ -334,6 +405,13 @@ Sometimes "within a tolerance" isn't good enough, and you want both languages to
 **In Tether:** the C++ frame prep and detector write detection files byte-identical to Python's (1000 Anti-UAV frames and 525 MOT17 frames, checked with `cmp`). Three details made that work. Python's `round()` rounds halves to even (2.5 → 2), so C++ uses `std::nearbyint`, not `std::round`. Scaling pixels to [0, 1] divides in float32, as NumPy does. And box decoding is done in float32 too. Under NumPy 2's rules, a float32 array combined with a plain Python number stays float32, so `(x1 - pad) / scale` rounds to float32 at every step. Doing it in double gave 337.66667683919275 where Python gives 337.6666564941406.
 
 **Gotcha:** both shortcuts pass every test that uses round numbers (scale 0.5, scale 1). Only a test with an awkward scale like 0.3, or a size that lands exactly on .5, catches them.
+
+### Fixed-point resize (matching OpenCV's rounding on the GPU)
+To resize an 8-bit image, OpenCV's bilinear `cv::resize` doesn't use floats: it rounds each pixel's two weights per axis to whole numbers out of 2048, adds across and then down in integers, and rounds the total once. Its vectorized code (SSE/AVX) rounds that last step a little differently from its plain C++ code. A GPU kernel that wants OpenCV's output has to copy those integer steps, not just "bilinear interpolation".
+
+**In Tether:** the CUDA frame-prep kernel (#17) computes OpenCV's source pixels and weights with OpenCV's own formula, then does the vectorized code's arithmetic: drop 4 bits, keep the high 16 bits of each product, round off the last 2. With the plain-code rounding instead, 9.1–14.8% of values were one gray level off on 1920×1080 frames into 1280×736. With the vectorized rounding, the blob is bit-identical, so detections with CUDA and CPU prep are byte-identical (`docs/benchmarks/cuda-prep.md`). The test's tolerance is still one gray level, since odd frame sizes can be off by one on a few hundredths of a percent of values, where OpenCV finishes a row with its plain code.
+
+**Gotcha:** which code OpenCV runs depends on the CPU's instruction set, so "bit-identical" is a property of this machine, not a guarantee. And a float tolerance of exactly 1/255 fails on values that are exactly one level apart: 101/255 − 100/255 is a hair over 1/255 in float.
 
 ### Tie-breaking (why the port copies SciPy's solver)
 When two different answers are exactly as good, which one an algorithm returns depends on details like the order it scans its inputs. That's not a bug, but two implementations that both find "an optimal answer" can still disagree.

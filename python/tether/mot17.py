@@ -85,7 +85,7 @@ def score(gt_dir: Path, trackers_dir: Path, tracker: str, sequences: list[str]) 
 
 
 def evaluate(mot17_dir: str | Path, work_dir: str | Path, tracker_cmd: str, name: str,
-             detect: Callable[[np.ndarray], list[Detection]], detector_name: str = "yolo26n") -> dict:
+             detect: Callable[[np.ndarray], list[Detection]], detector_name: str = DEFAULT_MODEL.stem) -> dict:
     """Run the whole evaluation and save it to `work_dir/trackers/<name>/results.json`.
 
     Detections go to `work_dir/detections/<detector_name>/` and are reused if

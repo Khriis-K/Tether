@@ -4,6 +4,7 @@
 // the model the same numbers.
 #pragma once
 
+#include <memory>
 #include <opencv2/core.hpp>
 #include <vector>
 
@@ -27,11 +28,14 @@ cv::Mat letterbox(const cv::Mat& frame, const Letterbox& geometry, int out_h, in
 
 // Model input for one frame, plus what's needed to map boxes back to the frame.
 struct PreparedFrame {
-  std::vector<float> blob;  // [1, 3, height, width] RGB in [0, 1]
+  std::vector<float> blob;  // [1, 3, height, width] RGB in [0, 1]; empty when gpu_blob holds it
   int height, width;  // the model input's
   double scale;
   int pad_x, pad_y;
   int frame_height, frame_width;  // the original frame's
+  // The same blob in GPU memory, from CUDA frame prep, for a GPU detector to
+  // read where it is; null from CPU frame prep. Freed with the last copy.
+  std::shared_ptr<const float> gpu_blob = nullptr;
 };
 
 class FramePrep {
@@ -50,5 +54,16 @@ class CpuFramePrep : public FramePrep {
  private:
   int height_, width_;
 };
+
+// Where frames are prepared: CpuFramePrep above, or CudaFramePrep
+// (cuda_frame_prep.hpp), which leaves the blob on the GPU.
+enum class Prep { cpu, cuda };
+
+// Whether this build has CUDA frame prep (CMake was given TensorRT_ROOT, and with it the CUDA toolkit).
+bool cuda_prep_built();
+
+// The frame prep for a height x width model input. Throws std::runtime_error
+// for CUDA in a build without it.
+std::unique_ptr<FramePrep> make_frame_prep(Prep prep, int height, int width);
 
 }  // namespace tether

@@ -50,6 +50,9 @@ struct Options {
   std::optional<std::string> model, dump, timing, record, screenshot;
   bool show = false;
   PipelineMode pipeline = PipelineMode::sequential;
+  Runtime runtime = Runtime::onnxruntime;
+  bool cuda_graph = true;
+  Prep prep = Prep::cpu;
   std::string model_size = "n";
   double det_min_score = DETECTOR_MIN_SCORE;
   long long max_frames = 0;  // 0: no limit
@@ -106,17 +109,20 @@ std::string default_timing_log() {
 
 std::filesystem::path model_for_size(const std::string& size) {
   if (size != "n" && size != "s" && size != "m") throw std::invalid_argument("model size must be n, s or m");
-  return std::filesystem::path("models") / ("yolo26" + size + ".onnx");
+  return std::filesystem::path("models") / ("yolo26" + size + "_" + SHIPPED_INPUT + ".onnx");
 }
 
-Settings run_settings(const std::filesystem::path& model, PipelineMode mode) {
+Settings run_settings(const std::filesystem::path& model, PipelineMode mode, Runtime runtime, bool cuda_graph,
+                      Prep prep) {
   // ONNX Runtime's own threads inside detect aren't counted in either mode.
   std::string pipeline = mode == PipelineMode::parallel
                              ? "parallel, " + std::to_string(PARALLEL_STAGE_THREADS + 1) + " threads"  // + main
                              : "sequential, 1 thread";
   return {{"model", model.filename().string()},
-          {"runtime", "ONNX Runtime (CPU)"},
-          {"frame prep", "CPU"},
+          {"runtime", runtime == Runtime::onnxruntime ? "ONNX Runtime (CPU)"
+                      : cuda_graph                    ? "TensorRT (GPU)"
+                                                      : "TensorRT (GPU, no CUDA graph)"},
+          {"frame prep", prep == Prep::cuda ? "CUDA (GPU)" : "CPU"},
           {"pipeline", pipeline}};
 }
 
@@ -125,7 +131,8 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
   std::map<std::string, Option> options = {
       {"--model", {"MODEL", "YOLO26 ONNX model; overrides --model-size (see tools/export_model.py)",
                    [&](const std::string& v) { o.model = v; }}},
-      {"--model-size", {"SIZE", "n, s or m: runs models/yolo26<SIZE>.onnx (default n)",
+      {"--model-size", {"SIZE", std::string("n, s or m: runs models/yolo26<SIZE>_") + SHIPPED_INPUT +
+                                    ".onnx (default n, the shipped detector)",
                         [&](const std::string& v) {
                           model_for_size(v);  // throws on anything but n, s or m
                           o.model_size = v;
@@ -145,6 +152,24 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
                         else if (v == "parallel") o.pipeline = PipelineMode::parallel;
                         else throw std::invalid_argument(v);
                       }}},
+      {"--runtime", {"RUNTIME", "onnxruntime (default): the model on ONNX Runtime's CPU provider; or tensorrt: "
+                                "the TensorRT engine built from it, MODEL with .engine in place of .onnx, on the "
+                                "GPU (see README.md, \"TensorRT runtime\")",
+                     [&](const std::string& v) {
+                       if (v == "onnxruntime") o.runtime = Runtime::onnxruntime;
+                       else if (v == "tensorrt") o.runtime = Runtime::tensorrt;
+                       else throw std::invalid_argument(v);
+                     }}},
+      {"--no-cuda-graph", {"", "with --runtime tensorrt: launch the engine's kernels one by one each frame, instead of "
+                               "replaying them from a CUDA graph captured once at start-up",
+                           [&](const std::string&) { o.cuda_graph = false; }}},
+      {"--prep", {"PREP", "cpu (default): prepare frames on the CPU; or cuda: with --runtime tensorrt, on the GPU with "
+                          "a CUDA kernel, the prepared frame left there for the engine",
+                  [&](const std::string& v) {
+                    if (v == "cpu") o.prep = Prep::cpu;
+                    else if (v == "cuda") o.prep = Prep::cuda;
+                    else throw std::invalid_argument(v);
+                  }}},
       {"--max-frames", {"N", "stop after N frames (default: run to the end, or until Ctrl-C)",
                         [&](const std::string& v) { o.max_frames = parse_positive(v); }}},
       {"--show", {"", "show the tracks in a window, with a live stats panel beside the video: Space pauses and resumes, q or Esc quits. While paused "
@@ -216,6 +241,14 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     err << usage() << "tether-pipeline: error: --show and --record track and draw, which --dump skips\n";
     return 2;
   }
+  if (!o.cuda_graph && o.runtime != Runtime::tensorrt) {
+    err << usage() << "tether-pipeline: error: --no-cuda-graph only applies to --runtime tensorrt\n";
+    return 2;
+  }
+  if (o.prep == Prep::cuda && o.runtime != Runtime::tensorrt) {
+    err << usage() << "tether-pipeline: error: --prep cuda leaves frames on the GPU, so it needs --runtime tensorrt\n";
+    return 2;
+  }
   if (o.dump && o.pipeline == PipelineMode::parallel) {
     err << usage() << "tether-pipeline: error: --pipeline parallel runs the tracking stages, which --dump skips\n";
     return 2;
@@ -223,9 +256,11 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
 
   try {
     std::filesystem::path model = o.model ? std::filesystem::path(*o.model) : model_for_size(o.model_size);
-    OnnxDetector detector(model, o.det_min_score);
+    auto detector_ptr = make_detector(o.runtime, model, o.det_min_score, o.cuda_graph);
+    Detector& detector = *detector_ptr;
     auto [height, width] = detector.input_size();
-    CpuFramePrep prep(height, width);
+    auto prep_ptr = make_frame_prep(o.prep, height, width);
+    FramePrep& prep = *prep_ptr;
     auto source = open_video_source(o.source);
     InterruptGuard guard;
     long long frames = 0;
@@ -260,7 +295,7 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     std::vector<Track> on_screen;
     std::unique_ptr<GuiScreen> screen;
     if (o.show)
-      screen = std::make_unique<GuiScreen>("Tether", [&] { return PanelData{stats.summary(), on_screen, run_settings(model, o.pipeline)}; });
+      screen = std::make_unique<GuiScreen>("Tether", [&] { return PanelData{stats.summary(), on_screen, run_settings(model, o.pipeline, o.runtime, o.cuda_graph, o.prep)}; });
     cv::VideoWriter recording;  // opened on the first frame, once its size is known
     Recorder recorder;
     if (o.record) {

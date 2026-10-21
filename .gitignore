@@ -7,3 +7,9 @@ models/
 results/
 data/
 cpp/build/
+# TensorRT engines: built per GPU and TensorRT version with trtexec (README.md, "TensorRT runtime")
+*.engine
+*.plan
+# Nsight Systems captures: 12 MB+ each with TensorRT; the stats exports are kept instead (docs/benchmarks/nsight-profile.md)
+*.nsys-rep
+*.qdstrm

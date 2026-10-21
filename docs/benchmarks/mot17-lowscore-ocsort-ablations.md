@@ -68,5 +68,5 @@ The ablation tracker was a throwaway script and is not in the repo. The low-scor
 
 ```
 tether-mot17 data/MOT17 --model models/yolo26n_1280x736.onnx --name tether_yolo26n_1280x736
-tether-mot17 data/MOT17 --name tether_yolo26n
+tether-mot17 data/MOT17 --model models/yolo26n.onnx --name tether_yolo26n
 ```

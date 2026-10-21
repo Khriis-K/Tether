@@ -58,3 +58,7 @@ Scored with the official MOT17 rule (detections matched to static-person, person
 - **The decision holds.** Recall goes up by 21 points at the same precision. The 2-video numbers above carry over (02 and 04 match to 0.1 point).
 - **The gain is uneven.** It's 13–33 points on 02, 04, 10 and 13, and 2–6 points on 05, 09 and 11. MOT17-05 is a 640×480 video, so 640 input already sees it at full size.
 - Per-video numbers are in `docs/benchmarks/mot17-bytetrack.md`, along with the tracker comparison: ByteTrack leads Tether by about 5 HOTA on both detection sets, and almost none of that comes from low-score detections, so the low-score question in Consequences is answered: not worth an issue on its own.
+
+## Update (2026-10-21): the shipped detector is now YOLO26n at 1280×736 too
+
+#18 measured speed and accuracy together on TensorRT, and #17 moved frame prep to the GPU. YOLO26n at 1280×736 now ships, so the benchmark detection set and the shipped detector are the same model. See ADR 0003 (`0003-ship-yolo26n-1280x736.md`), which replaces this ADR's "the shipped detector stays YOLO26n at 640".

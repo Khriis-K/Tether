@@ -8,16 +8,25 @@
 #include <string>
 #include <vector>
 
+#include "tether/detector.hpp"
+#include "tether/frame_prep.hpp"
 #include "tether/panel.hpp"
 #include "tether/pipeline.hpp"
 
 namespace tether {
 
-// models/yolo26<size>.onnx for size "n", "s" or "m"; throws std::invalid_argument otherwise.
+// The shipped detector's input size, width x height (ADR 0003): --model-size picks a model at it.
+inline constexpr const char* SHIPPED_INPUT = "1280x736";
+
+// models/yolo26<size>_1280x736.onnx (at SHIPPED_INPUT) for size "n", "s" or "m"; throws
+// std::invalid_argument otherwise.
 std::filesystem::path model_for_size(const std::string& size);
 
-// The speed settings behind a run of `model` in `mode`, for the stats panel.
-Settings run_settings(const std::filesystem::path& model, PipelineMode mode = PipelineMode::sequential);
+// The speed settings behind a run of `model` in `mode` on `runtime` (TensorRT
+// with a CUDA graph unless `cuda_graph` is false) with frames prepared by
+// `prep`, for the stats panel. Only the non-default graph setting is named.
+Settings run_settings(const std::filesystem::path& model, PipelineMode mode = PipelineMode::sequential,
+                      Runtime runtime = Runtime::onnxruntime, bool cuda_graph = true, Prep prep = Prep::cpu);
 
 // `args` excludes the program name. Exit codes as tether-track: 0 ok, 2 bad
 // arguments, 1 when the source, model or an output file can't be used.

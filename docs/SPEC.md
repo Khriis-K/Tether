@@ -142,7 +142,7 @@ It is built in two passes: a Python prototype to get the tracking logic right, t
 
 ### Technology
 
-- **Detector model:** Ultralytics YOLO26n (no NMS step, built for edge devices, better on small objects). Later compare n, s, and m.
+- **Detector model:** Ultralytics YOLO26n at 1280×736 input (no NMS step, built for edge devices, better on small objects). n, s and m were compared at 640 and 1280×736 in #18; see `docs/adr/0003-ship-yolo26n-1280x736.md`.
 - **Model format:** ONNX.
 - **Runtimes:** ONNX Runtime first, then TensorRT on the laptop GPU. ONNX Runtime is also the plan for Android later.
 - **GPU code:** CUDA, for frame prep only. The tracker stays on the CPU, since it is too small a job for the GPU to help.
@@ -179,7 +179,7 @@ There is no existing codebase, so there is no prior art. The scripted tracker te
 
 ### Targets
 
-All speed targets are for the final C++ version with TensorRT and YOLO26n at 640 input on an RTX 5070 laptop GPU. All targets are starting goals. Real numbers are reported either way.
+All speed targets are for the final C++ version running the shipped configuration: YOLO26n at 1280×736 input on TensorRT, with CUDA frame prep and the parallel pipeline (`tether-pipeline VIDEO --runtime tensorrt --prep cuda --pipeline parallel`), on an RTX 5070 laptop GPU. They were first written for YOLO26n at 640; ADR 0003 moved them to the model that ships. All targets are starting goals. Real numbers are reported either way.
 
 **Speed**
 - Pipeline speed on video files: 120+ FPS.
@@ -187,7 +187,7 @@ All speed targets are for the final C++ version with TensorRT and YOLO26n at 640
 - End-to-end delay on webcam: under 50 ms.
 - Live webcam: keep up with the camera's full rate with zero dropped frames.
 
-**Accuracy on MOT17** (same unfiltered detections given to both trackers; each applies its own thresholds). The headline detection set is YOLO26n at 1280×736 input, with the shipped detector (YOLO26n at 640) reported as a second row. See `docs/adr/0002-mot17-benchmark-detections-yolo26n-1280.md`.
+**Accuracy on MOT17** (same unfiltered detections given to both trackers; each applies its own thresholds). The headline detection set is YOLO26n at 1280×736 input, which is also the shipped detector, with YOLO26n at 640 (the shipped detector until ADR 0003) reported as a second row. See `docs/adr/0002-mot17-benchmark-detections-yolo26n-1280.md` and `docs/adr/0003-ship-yolo26n-1280x736.md`.
 - HOTA: within 2 points of ByteTrack.
 - IDF1: equal to or better than ByteTrack.
 - ID switches: equal to or fewer than ByteTrack.
@@ -227,6 +227,6 @@ All speed targets are for the final C++ version with TensorRT and YOLO26n at 640
 - **Most drone tracking videos show one drone at a time.** That is why MOT17 covers multi-object accuracy and Anti-UAV covers fast, small targets.
 - **The detector dominates frame time**, so whole-pipeline gains from C++ will be smaller than tracking-step gains. Both numbers are reported.
 - **Small, far, fast targets** pull the model-size choice in opposite directions (faster model vs. more accurate model). The n/s/m comparison is meant to show that trade-off.
-- **Input size matters more than model size for small targets.** On MOT17, going from 640 to 1280 input more than doubled detector recall, while bigger models at 640 barely helped. The n/s/m comparison therefore also varies input size.
+- **Input size matters more than model size for small targets.** On MOT17, going from 640 to 1280 input more than doubled detector recall, while bigger models at 640 barely helped on the two videos first checked. The n/s/m comparison therefore also varied input size. On all 7 videos (#18), bigger models help too (s at 640: 40.0% recall against n's 33.7%), but less than input size (n at 1280×736: 54.6%).
 - **License:** Ultralytics models use AGPL-3.0, which is fine for an open-source project.
 - **Name:** Tether.
