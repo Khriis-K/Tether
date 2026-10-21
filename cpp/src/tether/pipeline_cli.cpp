@@ -18,7 +18,9 @@
 #include "tether/detector.hpp"
 #include "tether/formats.hpp"
 #include "tether/frame_prep.hpp"
+#include "tether/gui_screen.hpp"
 #include "tether/hud_view.hpp"
+#include "tether/live_stats.hpp"
 #include "tether/pipeline.hpp"
 #include "tether/tracker.hpp"
 #include "tether/video_source.hpp"
@@ -45,7 +47,7 @@ class InterruptGuard {
 
 struct Options {
   std::string source;
-  std::optional<std::string> model, dump, timing, record;
+  std::optional<std::string> model, dump, timing, record, screenshot;
   bool show = false;
   std::string model_size = "n";
   double det_min_score = DETECTOR_MIN_SCORE;
@@ -106,6 +108,13 @@ std::filesystem::path model_for_size(const std::string& size) {
   return std::filesystem::path("models") / ("yolo26" + size + ".onnx");
 }
 
+Settings run_settings(const std::filesystem::path& model) {
+  return {{"model", model.filename().string()},
+          {"runtime", "ONNX Runtime (CPU)"},
+          {"frame prep", "CPU"},
+          {"pipeline", "sequential, 1 thread"}};
+}
+
 int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, std::ostream& err) {
   Options o;
   std::map<std::string, Option> options = {
@@ -125,7 +134,7 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
                     [&](const std::string& v) { o.timing = v; }}},
       {"--max-frames", {"N", "stop after N frames (default: run to the end, or until Ctrl-C)",
                         [&](const std::string& v) { o.max_frames = parse_positive(v); }}},
-      {"--show", {"", "show the tracks in a window: Space pauses and resumes, q or Esc quits. While paused "
+      {"--show", {"", "show the tracks in a window, with a live stats panel beside the video: Space pauses and resumes, q or Esc quits. While paused "
                       "the pipeline waits, so that frame's draw time in the timing log includes the pause, "
                       "and on a webcam the frames missed meanwhile count as dropped. Time runs unpaused",
                   [&](const std::string&) { o.show = true; }}},
@@ -133,6 +142,8 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
                              "source's frame rate (30 when it can't tell). One frame per frame tracked, so a webcam "
                              "run that falls behind the camera plays back fast",
                     [&](const std::string& v) { o.record = v; }}},
+      {"--screenshot", {"PNG", "with --show: save the window, video and stats panel, as it looks when the run ends",
+                        [&](const std::string& v) { o.screenshot = v; }}},
   };
 
   std::vector<std::string> positional;
@@ -184,13 +195,18 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     return 2;
   }
   o.source = positional[0];
+  if (o.screenshot && !o.show) {
+    err << usage() << "tether-pipeline: error: --screenshot saves the --show window, so it needs --show\n";
+    return 2;
+  }
   if (o.dump && (o.show || o.record)) {
     err << usage() << "tether-pipeline: error: --show and --record track and draw, which --dump skips\n";
     return 2;
   }
 
   try {
-    OnnxDetector detector(o.model ? std::filesystem::path(*o.model) : model_for_size(o.model_size), o.det_min_score);
+    std::filesystem::path model = o.model ? std::filesystem::path(*o.model) : model_for_size(o.model_size);
+    OnnxDetector detector(model, o.det_min_score);
     auto [height, width] = detector.input_size();
     CpuFramePrep prep(height, width);
     auto source = open_video_source(o.source);
@@ -220,8 +236,14 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     std::optional<int> dropped;  // stays empty when the source can't count drops
 
     // The draw step. Headless (neither --show nor --record) it only says whether to go on.
-    std::unique_ptr<WindowScreen> screen;
-    if (o.show) screen = std::make_unique<WindowScreen>("Tether");
+    // The window's stats panel reads the step times the timing log gets, so it
+    // shows the frames up to the one before: a frame's own draw time isn't known
+    // until it's on screen.
+    LiveStats stats;
+    std::vector<Track> on_screen;
+    std::unique_ptr<GuiScreen> screen;
+    if (o.show)
+      screen = std::make_unique<GuiScreen>("Tether", [&] { return PanelData{stats.summary(), on_screen, run_settings(model)}; });
     cv::VideoWriter recording;  // opened on the first frame, once its size is known
     Recorder recorder;
     if (o.record) {
@@ -236,16 +258,23 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     if (screen || recorder) view.emplace(screen.get(), recorder);
     auto draw = [&](const cv::Mat& frame, const std::vector<Track>& tracks) {
       ++frames;
+      if (screen) on_screen = tracks;
       bool keep_going = view ? view->show(frame, tracks) : true;
       return keep_going && more();
     };
     run_sequential(*source, prep, detector, tracker, draw, steady_clock_ms, [&](const StepTimes& t) {
       log.write(t);
+      stats.add(t);
       if (t.dropped) dropped = dropped.value_or(0) + *t.dropped;
     });
     out << frames << " frames";
     if (dropped) out << ", " << *dropped << " dropped by the camera";
     out << "\n";
+    if (o.screenshot) {
+      make_parent(*o.screenshot);
+      screen->save_screenshot(*o.screenshot);
+      out << "screenshot saved to " << *o.screenshot << "\n";
+    }
     if (recording.isOpened()) {
       recording.release();  // finishes the file
       out << "recording saved to " << *o.record << "\n";

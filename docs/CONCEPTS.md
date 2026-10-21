@@ -262,7 +262,7 @@ The frame time that 99% of frames beat. Averages hide the occasional slow frame,
 ### Nearest-rank percentile
 One way to compute a percentile: sort the values and pick the one at position ⌈p × n⌉. The answer is always a value you actually measured. NumPy's default instead *interpolates* between neighbors, which can give a frame time no frame ever had. On small samples the two disagree a lot.
 
-**In Tether:** `tether-timing` uses nearest rank. With under 100 frames, P99 is simply the worst frame.
+**In Tether:** `tether-timing` uses nearest rank, and so does the C++ `p99` behind the live stats panel, which works it out over the last 300 frames. With under 100 frames, P99 is simply the worst frame.
 
 ### Sequential vs. parallel (pipelined) stages
 - **Sequential:** capture → prep → detect → track → draw, one frame at a time. Simple to debug, but every stage waits on the others.
@@ -349,6 +349,18 @@ A way to give each new item its own colour without knowing how many items there 
 Showing one piece of information two ways at once, so it still reads if one channel fails, for example for colour-blind viewers or on a washed-out projector. It's a standard accessibility rule: never use colour as the only signal.
 
 **In Tether:** a track's status is shown both by colour and by line style. Tracked objects get solid corner brackets. The prediction of where they'll be next is a thin dashed box. A searching object is a thick, longer-dashed box in the accent colour, with a "missing N" label. A test compares the searching box's ink with a prediction's, so "thicker" can't quietly drift away.
+
+### Immediate-mode GUI (Dear ImGui)
+A way to build a user interface where the program redraws the whole UI every frame from its current data, instead of creating widgets once and updating them. Each frame you call `Text(...)`, `ProgressBar(...)` and so on, and the library turns those calls into triangles for the GPU. There's no widget state to keep in sync, which suits a display whose numbers change every frame. Dear ImGui is the common C++ library for it, popular for game and tool overlays.
+
+**In Tether:** the stats panel (`cpp/src/tether/panel.cpp`) is one function, `draw_panel`, called every frame with the latest stats, tracks and settings. `GuiScreen` (`gui_screen.cpp`) runs it in a GLFW window through OpenGL, with the video as a texture beside it. Because ImGui only produces vertex lists, the tests draw the panel in a context with no window and check the vertex colours: no accent orange unless a track is searching, and no colour outside the palette.
+
+**Gotcha:** ImGui's defaults (grey theme, its own font, rounded windows) show through anywhere you don't override them. The panel pushes its own colours for every element it uses, and a test catches any stray colour.
+
+### Vsync (waiting for the monitor's refresh)
+Holding each new frame until the monitor starts its next refresh, so the picture never tears. The cost is that showing a frame can block for up to one refresh period (16.7 ms at 60 Hz), and the frame rate can't go above the refresh rate.
+
+**In Tether:** the `--show` window turns it off (`glfwSwapInterval(0)`). With it on, the wait would land inside the `draw` step's time, inflating it and the frame time, and the FPS number couldn't go past 60. A timed pipeline should measure its own work, not the monitor's schedule.
 
 ### Image-sequence frame rate
 A folder of numbered images (how MOT17 ships its videos) has no frame rate of its own: it's just pictures. When OpenCV opens one through FFmpeg it can report FFmpeg's default of 25 FPS, which is made up. A PNG sequence in our tests reported nothing at all.

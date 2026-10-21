@@ -1,6 +1,5 @@
 #include "tether/hud_view.hpp"
 
-#include <opencv2/highgui.hpp>
 #include <utility>
 
 #include "tether/hud.hpp"
@@ -16,26 +15,6 @@ constexpr int PAUSED_POLL_MS = 30;  // how often a paused view checks for keys
 bool is_quit(int key) { return key == 'q' || key == ESC; }
 
 }  // namespace
-
-WindowScreen::WindowScreen(std::string title) : title_(std::move(title)) {
-  cv::namedWindow(title_, cv::WINDOW_AUTOSIZE);
-}
-
-WindowScreen::~WindowScreen() { cv::destroyWindow(title_); }
-
-void WindowScreen::show(const cv::Mat& frame) {
-  cv::imshow(title_, frame);
-  shown_ = true;
-}
-
-int WindowScreen::wait_key(int ms) {
-  int key = cv::waitKey(ms);
-  return key < 0 ? -1 : key & 0xFF;
-}
-
-bool WindowScreen::closed() const {
-  return shown_ && cv::getWindowProperty(title_, cv::WND_PROP_VISIBLE) < 1;
-}
 
 HudView::HudView(Screen* screen, Recorder recorder) : screen_(screen), recorder_(std::move(recorder)) {}
 

@@ -5,14 +5,14 @@
 
 #include <functional>
 #include <opencv2/core.hpp>
-#include <string>
 #include <vector>
 
 #include "tether/formats.hpp"
 
 namespace tether {
 
-// Where frames are shown and keys come from.
+// Where frames are shown and keys come from: GuiScreen (gui_screen.hpp), or a
+// scripted stand-in in the tests.
 class Screen {
  public:
   virtual ~Screen() = default;
@@ -21,22 +21,6 @@ class Screen {
   virtual int wait_key(int ms) = 0;
   // True once the viewer has closed the window.
   virtual bool closed() const = 0;
-};
-
-// An OpenCV (highgui) window. Closes it when destroyed.
-class WindowScreen : public Screen {
- public:
-  explicit WindowScreen(std::string title);
-  ~WindowScreen() override;
-  WindowScreen(const WindowScreen&) = delete;
-  WindowScreen& operator=(const WindowScreen&) = delete;
-  void show(const cv::Mat& frame) override;
-  int wait_key(int ms) override;
-  bool closed() const override;
-
- private:
-  std::string title_;
-  bool shown_ = false;
 };
 
 // Takes each drawn frame, once, in order.
