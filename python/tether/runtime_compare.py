@@ -22,8 +22,8 @@ prep against CUDA frame prep (--prep cuda). Two checks, both through
    back.
 
 Speedups are the first side's time over the second's (above 1: the second,
-TensorRT, the CUDA graph or CUDA frame prep, is faster). The results and every dump and timing
-log are saved together under --out.
+TensorRT, the CUDA graph or CUDA frame prep, is faster). The results and
+every dump and timing log are saved together under --out.
 """
 
 import argparse

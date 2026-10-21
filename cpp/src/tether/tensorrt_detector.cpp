@@ -163,14 +163,11 @@ std::vector<Detection> TensorRtDetector::detect(const PreparedFrame& prepared) {
   std::vector<float> rows(e.output_elements);
   // From CUDA frame prep, the blob is already on the GPU: a copy within it into
   // the engine's own input, whose address the CUDA graph has recorded.
-  if (prepared.gpu_blob)
-    check(cudaMemcpyAsync(e.input, prepared.gpu_blob.get(), e.input_elements * sizeof(float),
-                          cudaMemcpyDeviceToDevice, e.stream),
-          "copy on the GPU");
-  else
-    check(cudaMemcpyAsync(e.input, prepared.blob.data(), e.input_elements * sizeof(float), cudaMemcpyHostToDevice,
-                          e.stream),
-          "copy to GPU");
+  bool on_gpu = prepared.gpu_blob != nullptr;
+  check(cudaMemcpyAsync(e.input, on_gpu ? prepared.gpu_blob.get() : prepared.blob.data(),
+                        e.input_elements * sizeof(float), on_gpu ? cudaMemcpyDeviceToDevice : cudaMemcpyHostToDevice,
+                        e.stream),
+        on_gpu ? "copy on the GPU" : "copy to GPU");
   if (e.graph)
     check(cudaGraphLaunch(e.graph, e.stream), "cudaGraphLaunch");
   else if (!e.context->enqueueV3(e.stream))
