@@ -59,6 +59,17 @@ def test_too_little_overlap_too_different_a_score_or_another_class_is_no_partner
         assert agreement([[det()]], [[other]])["partnered"] == 0, other
 
 
+def test_of_two_near_identical_boxes_the_partner_is_the_one_with_the_closer_score():
+    # ONNX Runtime put two boxes on one object; TensorRT's score matches the second, slightly offset one.
+    twin = det((100.0, 100.0, 200.0, 201.0), 0.6)
+    a = agreement([[det(score=0.9), twin]], [[det((100.0, 100.0, 200.0, 200.2), 0.6)]])
+
+    # TensorRT's 0.6 overlaps the 0.9 box more but partners the 0.6 twin; the 0.9 box has none within 0.02.
+    assert a["checked"] == 3
+    assert a["partnered"] == 2
+    assert a["worst_partnered_score_diff"] == pytest.approx(0.0)
+
+
 def test_detections_under_the_tracker_threshold_arent_checked_but_can_be_partners():
     # 0.26 in one runtime, 0.245 in the other: the 0.26 one counts and finds its partner.
     a = agreement([[det(score=0.26), det((400.0, 400.0, 450.0, 450.0), 0.2)]], [[det(score=0.245)]])

@@ -2,7 +2,7 @@
 
 **Question:** with the same YOLO26n model run by TensorRT on the laptop GPU instead of ONNX Runtime on the CPU, how much faster is the model run, and are the detections still the same?
 
-**Answer:** the model run (the pipeline's `detect` step) is **5.16–5.63× faster at 640** (32.77–33.33 → 5.84–6.46 ms) and **10.01–10.45× faster at 1280×736** (72.68–76.26 → 7.07–7.36 ms). That clears the spec's 1.5× by a wide margin. Whole-pipeline FPS (sequential, headless) goes up **2.15–3.25× at 640** and **3.24–4.66× at 1280×736**, less than detect alone because capture and prep don't change. The detections **agree within the tolerance on all four video × input-size pairs**: every detection scoring at least 0.25 in one runtime had a partner in the other, with scores at most 0.0003 apart and box corners at most 0.001 px apart. That's for engines built with `--noTF32`. With `trtexec`'s default, which allows TF32, MOT17-04 at 1280×736 **failed** the check (98.91% partnered against the 99% needed), because 1.09% of the detections checked had a partner box but a score more than 0.02 away. Turning TF32 off cost at most 0.335 ms a frame, so the documented engine build uses `--noTF32`.
+**Answer:** the model run (the pipeline's `detect` step) is **5.15–5.63× faster at 640** (32.77–33.33 → 5.84–6.46 ms) and **10.01–10.44× faster at 1280×736** (72.68–76.26 → 7.07–7.36 ms). That clears the spec's 1.5× by a wide margin. Whole-pipeline FPS (sequential, headless) goes up **2.15–3.25× at 640** and **3.24–4.66× at 1280×736**, less than detect alone because capture and prep don't change. The detections **agree within the tolerance on all four video × input-size pairs**: every detection scoring at least 0.25 in one runtime had a partner in the other, with scores at most 0.00032 apart and box corners less than 0.001 px apart. That's for engines built with `--noTF32`. With `trtexec`'s default, which allows TF32, MOT17-04 at 1280×736 **failed** the check (98.94% partnered against the 99% needed), because 1.05% of the detections checked had a partner box but a score more than 0.02 away. Turning TF32 off cost at most 0.341 ms a frame, so the documented engine build uses `--noTF32`.
 
 Caveat on what's compared: ONNX Runtime here is its **CPU** provider (the only one in the pipeline), so this is the GPU against the CPU, not TensorRT against ONNX Runtime's CUDA provider. Most of the gain is the GPU; how much is TensorRT's compilation wasn't measured.
 
@@ -18,22 +18,24 @@ Caveat on what's compared: ONNX Runtime here is its **CPU** provider (the only o
 
 ## Agreement
 
-The tolerance was set in `tether/runtime_compare.py` before the first comparison on the real model: every detection scoring at least 0.25 (the tracker's own threshold) in either runtime must have a partner in the other, of the same class, with IoU ≥ 0.95 and scores within 0.02. The runtimes agree when at least 99% of those detections have one. The partner may score below 0.25, so a detection sitting on the threshold isn't counted missing because it landed just under it in the other runtime ([Detection agreement](../CONCEPTS.md#detection-agreement-between-runtimes)).
+The tolerance was set in `tether/runtime_compare.py` before the first comparison on the real model: every detection scoring at least 0.25 (the tracker's own threshold) in either runtime must have a partner in the other, of the same class, with IoU ≥ 0.95 and scores within 0.02. The runtimes agree when at least 99% of those detections have one. Among the other runtime's boxes that overlap enough, the partner is the one with the closest score, and partners aren't exclusive. The partner may score below 0.25, so a detection sitting on the threshold isn't counted missing because it landed just under it in the other runtime ([Detection agreement](../CONCEPTS.md#detection-agreement-between-runtimes)).
 
 | Video | Input | Engine | Checked | With a partner | Worst partner score diff | Worst partner box diff | Result |
 |---|---|---|---|---|---|---|---|
-| Anti-UAV | 640 | `--noTF32` | 56 | 56 (100%) | 0.0000 | 0.001 px | pass |
-| Anti-UAV | 1280×736 | `--noTF32` | 4 | 4 (100%) | 0.0000 | 0.000 px | pass |
-| MOT17-04 | 640 | `--noTF32` | 30,214 | 30,214 (100%) | 0.0001 | 0.001 px | pass |
-| MOT17-04 | 1280×736 | `--noTF32` | 79,268 | 79,268 (100%) | 0.0003 | 0.001 px | pass |
+| Anti-UAV | 640 | `--noTF32` | 56 | 56 (100%) | 0.00001 | 0.0006 px | pass |
+| Anti-UAV | 1280×736 | `--noTF32` | 4 | 4 (100%) | 0.000002 | < 0.0001 px | pass |
+| MOT17-04 | 640 | `--noTF32` | 30,214 | 30,214 (100%) | 0.000094 | 0.0007 px | pass |
+| MOT17-04 | 1280×736 | `--noTF32` | 79,268 | 79,268 (100%) | 0.00032 | 0.0008 px | pass |
 | Anti-UAV | 640 | TF32 | 55 | 55 (100%) | 0.0186 | 2.814 px | pass |
 | Anti-UAV | 1280×736 | TF32 | 4 | 4 (100%) | 0.0037 | 0.239 px | pass |
-| MOT17-04 | 640 | TF32 | 30,235 | 30,031 (99.33%) | 0.0198 | 3.352 px | pass |
-| MOT17-04 | 1280×736 | TF32 | 79,277 | 78,413 (98.91%) | 0.0200 | 1.421 px | **fail** |
+| MOT17-04 | 640 | TF32 | 30,235 | 30,033 (99.33%) | 0.0198 | 3.352 px | pass |
+| MOT17-04 | 1280×736 | TF32 | 79,277 | 78,444 (98.94%) | 0.0199 | 2.483 px | **fail** |
 
 "Checked" counts each detection from both sides, so it's about twice the detections per runtime. The Anti-UAV clip has very few detections at 0.25 or more (a small drone, and a COCO model with no drone class), so its rows say little; MOT17-04 carries this check.
 
-**What failed with TF32.** All 864 detections without a partner on MOT17-04 at 1280×736 (and all 204 at 640) failed on score alone: each had a same-class box in the other runtime overlapping by IoU 0.95 or more. Across all detections checked at 640, the median score difference was 0.0004 and the 99th percentile 0.013, but the largest was 0.315, on one person at x≈1570 px around frames 707–775, where YOLO26 put two near-identical boxes and the two runtimes split the score between them differently (frame 707: 0.536 on ONNX Runtime, 0.221 on TensorRT, IoU 0.9996). At 1280×736, 355 of the 79,277 differed by more than 0.05, and the largest by 0.263. (These breakdowns were computed from the dumps in `results/runtime-compare/tf32/` after the runs; they aren't in the results files.)
+**What failed with TF32.** None of the 833 detections without a partner on MOT17-04 at 1280×736 (nor the 202 at 640) was missing a box: each had at least one same-class box in the other runtime overlapping it by IoU 0.95 or more, and failed only because the closest score among those was more than 0.02 away. Across all detections checked at 640, the median score difference to the partner was 0.00039 and the 99th percentile 0.0127, but 24 were more than 0.05 off and the largest 0.315: one person at x≈1565 px in frame 707, one box in each runtime (IoU 0.9996), scoring 0.536 on ONNX Runtime and 0.221 on TensorRT. In some of the frames after it (718–775), YOLO26 put two near-identical boxes on that same person. At 1280×736 the 99th percentile was 0.0218, 330 were more than 0.05 off, and the largest 0.226. (These breakdowns were computed from the dumps in `results/runtime-compare/tf32/` after the runs; they aren't in the results files.)
+
+**The agreement rule was fixed after review.** The first version took the highest-IoU same-class box as the partner and checked only its score, so where YOLO26 puts two near-identical boxes on one object, a detection could fail against the wrong twin. The rule now takes the closest score among the boxes at IoU 0.95 or more (`test_of_two_near_identical_boxes_the_partner_is_the_one_with_the_closer_score`). The tolerance itself didn't change, and every agreement number here was recomputed from the saved dumps with the fixed rule. It changed only the two TF32 MOT17-04 rows: 30,031 → 30,033 partnered at 640, and 78,413 (98.91%) → 78,444 (98.94%) at 1280×736, still a fail.
 
 **Without TF32 the outputs are near-identical.** Not byte-identical: not one frame's line in the dump files is the same text, because the last digits of boxes and scores differ, but both runtimes kept exactly the same number of detections at 0.1 and above on MOT17-04 at 640 (26,212 each). ONNX Runtime itself was deterministic: its dumps were byte-identical between the TF32 and `--noTF32` sessions for every video and size.
 
@@ -62,14 +64,14 @@ Mean milliseconds per frame (P99 in brackets for frame time and detect). Sequent
 | MOT17-04 1280×736, 2 | TRT | 34.0 | 29.42 (38.19) | 12.22 | 8.06 | 7.36 (13.32) | 0.81 | 16.23 |
 | | ORT | 10.5 | 95.46 (101.11) | 12.40 | 7.66 | 73.66 (79.26) | 0.89 | 82.21 |
 
-Speedups (ORT time over TRT time; FPS is TRT's over ORT's), rounds 1 and 2:
+Speedups (ORT time over TRT time; FPS is TRT's over ORT's), rounds 1 and 2, cut to two decimals:
 
 | Video, input | detect | FPS |
 |---|---|---|
 | Anti-UAV 640 | 5.63×, 5.61× | 2.84×, 3.25× |
-| Anti-UAV 1280×736 | 10.11×, 10.28× | 4.62×, 4.66× |
-| MOT17-04 640 | 5.16×, 5.27× | 2.15×, 2.18× |
-| MOT17-04 1280×736 | 10.45×, 10.01× | 3.48×, 3.24× |
+| Anti-UAV 1280×736 | 10.10×, 10.27× | 4.61×, 4.66× |
+| MOT17-04 640 | 5.15×, 5.27× | 2.15×, 2.17× |
+| MOT17-04 1280×736 | 10.44×, 10.01× | 3.48×, 3.24× |
 
 ### TF32 allowed (`trtexec` default)
 
@@ -77,17 +79,17 @@ Same commands, engines built without `--noTF32`, run in an earlier session the s
 
 | Video, input | ORT detect, rounds 1, 2 | TRT detect, rounds 1, 2 | detect speedup | FPS speedup |
 |---|---|---|---|---|
-| Anti-UAV 640 | 35.40, 35.39 | 6.05, 5.76 | 5.85×, 6.14× | 3.20×, 3.54× |
-| Anti-UAV 1280×736 | 76.78, 76.58 | 6.80, 6.81 | 11.30×, 11.25× | 4.77×, 4.70× |
-| MOT17-04 640 | 34.50, 34.76 | 6.25, 6.29 | 5.52×, 5.52× | 2.30×, 2.30× |
+| Anti-UAV 640 | 35.40, 35.39 | 6.05, 5.76 | 5.85×, 6.14× | 3.19×, 3.53× |
+| Anti-UAV 1280×736 | 76.78, 76.58 | 6.80, 6.81 | 11.29×, 11.24× | 4.77×, 4.70× |
+| MOT17-04 640 | 34.50, 34.76 | 6.25, 6.29 | 5.51×, 5.52× | 2.30×, 2.30× |
 | MOT17-04 1280×736 | 76.60, 76.38 | 7.22, 7.15 | 10.60×, 10.68× | 3.19×, 3.19× |
 
-Comparing TensorRT's mean detect time between the two builds (average of the two rounds each): `--noTF32` was 0.06 ms faster on Anti-UAV at 640 (5.85 against 5.91 ms), and 0.12, 0.335 and 0.145 ms slower on MOT17-04 at 640, Anti-UAV at 1280×736 and MOT17-04 at 1280×736 (up to 4.9%). The two builds ran in different sessions, and ONNX Runtime's own mean detect time moved by 1.3–3.9 ms between them on the same model and video, so these differences are within the drift between sessions. The TF32 build's higher detect speedups come mostly from the slower ONNX Runtime runs in that session, not a faster TensorRT.
+Comparing TensorRT's mean detect time between the two builds (average of the two rounds each): `--noTF32` was 0.054 ms faster on Anti-UAV at 640 (5.851 against 5.905 ms), and 0.117, 0.341 and 0.141 ms slower on MOT17-04 at 640, Anti-UAV at 1280×736 and MOT17-04 at 1280×736 (up to 5.01%). The two builds ran in different sessions, and ONNX Runtime's own mean detect time moved by 1.31–3.87 ms between them on the same model and video, so these differences are within the drift between sessions. The TF32 build's higher detect speedups come mostly from the slower ONNX Runtime runs in that session, not a faster TensorRT.
 
 ## Reading the numbers
 
-- **The detector stopped being the bottleneck.** On MOT17-04 at 640, TensorRT's frame (22.96–23.28 ms) is now capture 12.27–12.39, prep 3.63–3.64, detect 6.32–6.46 and track 0.33–0.35 ms. Decoding the JPEGs (`capture`) now takes nearly twice as long as the model run, and on the Anti-UAV clip prep (3.55–4.09 ms) is not far behind it. So the whole-pipeline gain is well under the detect gain: 2.15–2.18× FPS for a 5.16–5.27× faster detect on MOT17-04. That's where #17 (CUDA frame prep) and the parallel pipeline come in: in parallel mode the frame time was the detect time ([#14](parallel-pipeline.md)), and with detect at 6 ms the slowest stage would be capture instead. The parallel pipeline with TensorRT wasn't measured here.
-- **Detect barely grows with input size on the GPU.** 1280×736 has 2.3× the pixels of 640×640, and ONNX Runtime's detect went up 2.21–2.25× (averages of the two rounds), but TensorRT's only 1.15–1.22× (5.84–6.46 → 7.07–7.36 ms). That suggests most of TensorRT's 6 ms at 640 is fixed cost (copies, launches, waiting) rather than arithmetic. The copy alone moves 4.9 MB of float32 input at 640 and 11.3 MB at 1280×736 from pageable memory. Splitting the 6 ms into copy, compute and wait needs a profiler (#15, Nsight Systems).
-- **TensorRT's P99 is 1.6–1.9× its mean.** Detect P99 is 11.19–13.32 ms against means of 5.84–7.36 ms, a wider spread than ONNX Runtime's (P99 1.07–1.19× its mean, except MOT17-04 1280×736 round 1, whose 132.52 ms P99 also shows in its 179.18 ms frame-time P99). Every frame is timed, including the first, which includes the engine's first launch, but one frame can't move a P99 over 1000 frames. Why the GPU's slow frames are slow wasn't looked into here; #15 can see it.
+- **The detector stopped being the bottleneck.** On MOT17-04 at 640, TensorRT's frame (22.96–23.28 ms) is now capture 12.27–12.39, prep 3.63–3.64, detect 6.32–6.46 and track 0.33–0.35 ms. Decoding the JPEGs (`capture`) now takes nearly twice as long as the model run, and on the Anti-UAV clip prep (3.55–4.09 ms) is not far behind it. So the whole-pipeline gain is well under the detect gain: 2.15–2.17× FPS for a 5.15–5.27× faster detect on MOT17-04. That's where #17 (CUDA frame prep) and the parallel pipeline come in: in parallel mode the frame time was the detect time ([#14](parallel-pipeline.md)), and with detect at 6 ms the slowest stage would be capture instead. The parallel pipeline with TensorRT wasn't measured here.
+- **Detect barely grows with input size on the GPU.** 1280×736 has 2.3× the pixels of 640×640, and ONNX Runtime's detect went up 2.21–2.25× (averages of the two rounds), but TensorRT's only 1.14–1.22× (5.84–6.46 → 7.07–7.36 ms). That suggests most of TensorRT's 6 ms at 640 is fixed cost (copies, launches, waiting) rather than arithmetic. The copy alone moves 4.9 MB of float32 input at 640 and 11.3 MB at 1280×736 from pageable memory. Splitting the 6 ms into copy, compute and wait needs a profiler (#15, Nsight Systems).
+- **TensorRT's P99 is 1.64–1.93× its mean.** Detect P99 is 11.19–13.32 ms against means of 5.84–7.36 ms, a wider spread than ONNX Runtime's (P99 1.06–1.19× its mean, except MOT17-04 1280×736 round 1, whose 132.52 ms P99 also shows in its 179.18 ms frame-time P99). Every frame is timed, including the first, which includes the engine's first launch, but one frame can't move a P99 over 1000 frames. Why the GPU's slow frames are slow wasn't looked into here; #15 can see it.
 - **End-to-end delay drops with the model run.** Sequentially, delay is the time from capture to the end of draw, so it falls from 36.53–37.19 ms to 9.40–10.45 ms at 640, and from 80.27–86.78 ms to 14.54–16.31 ms at 1280×736.
 - **The spec's 120+ FPS on video files is still out of reach sequentially.** The best here is 79.9 FPS (Anti-UAV, 640). On MOT17-04, capture alone (12.27–12.39 ms) caps a sequential pipeline at about 81 FPS, before any other step.

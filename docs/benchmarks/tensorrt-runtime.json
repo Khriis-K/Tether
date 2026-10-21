@@ -1183,8 +1183,8 @@
   "agreement": {
    "frames": 1050,
    "checked": 30235,
-   "partnered": 30031,
-   "agreement": 0.9932528526542087,
+   "partnered": 30033,
+   "agreement": 0.9933190011575989,
    "worst_iou": 0.9768093839212743,
    "worst_partnered_score_diff": 0.019808679819107056,
    "worst_partnered_box_diff_px": 3.35186767578125,
@@ -1659,11 +1659,11 @@
   "agreement": {
    "frames": 1050,
    "checked": 79277,
-   "partnered": 78413,
-   "agreement": 0.9891015048500826,
+   "partnered": 78444,
+   "agreement": 0.989492538819582,
    "worst_iou": 0.9885193428024613,
    "worst_partnered_score_diff": 0.019957661628723145,
-   "worst_partnered_box_diff_px": 1.4205474853515625,
+   "worst_partnered_box_diff_px": 2.48333740234375,
    "without_partner": [
     {
      "frame": 2,

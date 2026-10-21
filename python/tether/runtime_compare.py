@@ -55,9 +55,11 @@ def agreement(onnxruntime: list[list[Detection]], tensorrt: list[list[Detection]
               min_iou: float = MIN_IOU, max_score_diff: float = MAX_SCORE_DIFF) -> dict:
     """How closely two runtimes' detections agree, frame by frame, checked both ways.
 
-    Each detection at or above `min_score` looks for its best-overlapping detection
-    of the same class in the other runtime (at any score); it has a partner when
-    that one overlaps by `min_iou` and their scores are within `max_score_diff`.
+    Each detection at or above `min_score` looks among the other runtime's
+    detections of the same class (at any score) that overlap it by `min_iou`;
+    its partner is the one with the closest score, and must be within
+    `max_score_diff`. Partners aren't exclusive: two near-identical boxes in one
+    runtime can share one in the other. Without such a box, it has no partner.
     """
     if len(onnxruntime) != len(tensorrt):
         raise ValueError(f"onnxruntime has {len(onnxruntime)} frames but tensorrt has {len(tensorrt)}")
@@ -71,18 +73,19 @@ def agreement(onnxruntime: list[list[Detection]], tensorrt: list[list[Detection]
                 if d.score < min_score:
                     continue
                 checked += 1
-                same_class = [o for o in there if o.cls == d.cls]
-                best = max(same_class, key=lambda o: iou(d.box, o.box), default=None)
-                overlap = iou(d.box, best.box) if best else 0.0
-                score_diff = abs(d.score - best.score) if overlap > 0 else None  # None: nothing overlaps it
-                worst_iou = min(worst_iou, overlap)
-                if overlap >= min_iou and score_diff <= max_score_diff:
+                overlaps = [(iou(d.box, o.box), o) for o in there if o.cls == d.cls]
+                best_iou = max((v for v, _ in overlaps), default=0.0)
+                worst_iou = min(worst_iou, best_iou)
+                close = [o for v, o in overlaps if v >= min_iou]
+                partner = min(close, key=lambda o: abs(d.score - o.score), default=None)
+                score_diff = abs(d.score - partner.score) if partner else None  # None: nothing overlaps enough
+                if partner and score_diff <= max_score_diff:
                     partnered += 1
                     worst_score_diff = max(worst_score_diff, score_diff)
-                    worst_box_diff = max(worst_box_diff, max(abs(a - b) for a, b in zip(d.box, best.box)))
+                    worst_box_diff = max(worst_box_diff, max(abs(a - b) for a, b in zip(d.box, partner.box)))
                 elif len(examples) < MAX_EXAMPLES:
                     examples.append({"frame": frame, "runtime": RUNTIMES[side], "box": list(d.box), "score": d.score,
-                                     "cls": d.cls, "best_iou": overlap, "score_diff": score_diff})
+                                     "cls": d.cls, "best_iou": best_iou, "score_diff": score_diff})
     return {"frames": len(onnxruntime), "checked": checked, "partnered": partnered,
             "agreement": partnered / checked if checked else 1.0,
             "worst_iou": worst_iou, "worst_partnered_score_diff": worst_score_diff,

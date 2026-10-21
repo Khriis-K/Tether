@@ -230,7 +230,7 @@ Both run an ONNX model.
 In Tether: both sit behind the same `Detector` interface, and `tether-pipeline --runtime onnxruntime|tensorrt` picks one. ONNX Runtime runs on the CPU (its CPU provider), TensorRT on the GPU, so the comparison is CPU against GPU, not two GPU runtimes.
 
 ### TensorRT engine
-What TensorRT turns an ONNX model into: a compiled plan (`.engine` or `.plan` file) holding the layers it fused and the GPU kernels it timed as fastest. Building one takes a minute or so; loading one takes milliseconds.
+What TensorRT turns an ONNX model into: a compiled plan (`.engine` or `.plan` file) holding the layers it fused and the GPU kernels it timed as fastest. Building one took 67–90 s for YOLO26n here; after that the pipeline only loads it.
 
 In Tether: built once per machine with `trtexec --onnx=models/yolo26n.onnx --saveEngine=models/yolo26n.engine --noTF32`, and loaded from next to the model (README, "TensorRT runtime").
 
@@ -239,12 +239,12 @@ Gotcha: an engine is tied to the GPU model, the TensorRT version and the input s
 ### Strongly typed network (precision from the model)
 TensorRT 11 takes each layer's precision from the model's own types, instead of picking lower precision on its own (`trtexec` no longer has `--fp16`). A float32 ONNX model gives a float32 engine. TF32, a float32 mode of the GPU's matrix units that keeps fewer mantissa bits, is allowed by default (`--noTF32` turns it off).
 
-In Tether: engines are built with `--noTF32`, so TensorRT runs the same plain float32 model as ONNX Runtime, and the speedup is from compilation and the GPU, not from lower precision. With TF32 on, 0.67% (640) and 1.09% (1280×736) of MOT17-04's detections came back with scores more than 0.02 off ONNX Runtime's (up to 0.31), enough to fail the agreement check at 1280×736. With it off, the worst score difference was 0.0003, and TensorRT's detect time changed by −0.06 to +0.335 ms a frame (`docs/benchmarks/tensorrt-runtime.md`). Running FP16 would need an FP16 ONNX export.
+In Tether: engines are built with `--noTF32`, so TensorRT runs the same plain float32 model as ONNX Runtime, and the speedup is from compilation and the GPU, not from lower precision. With TF32 on, 0.66% (640) and 1.05% (1280×736) of MOT17-04's detections came back with scores more than 0.02 off ONNX Runtime's (up to 0.315), enough to fail the agreement check at 1280×736. With it off, the worst score difference was 0.00032, and TensorRT's detect time changed by −0.054 to +0.341 ms a frame (`docs/benchmarks/tensorrt-runtime.md`). Running FP16 would need an FP16 ONNX export.
 
 Gotcha: TF32 is on by default and the build log only says "Precision: Strongly Typed", so it's easy to miss. And even plain float32 isn't bit-identical across runtimes: kernels add numbers in a different order, so boxes and scores differ in the last digits and need a tolerance (see [Detection agreement](#detection-agreement-between-runtimes)).
 
 ### Detection agreement (between runtimes)
-How to say two runtimes give "the same" detections when the numbers can't match exactly. Each detection one runtime finds looks for a partner in the other: same class, boxes overlapping by a high IoU, scores close. Checked both ways, so neither runtime can drop or invent boxes unnoticed.
+How to say two runtimes give "the same" detections when the numbers can't match exactly. Each detection one runtime finds looks for a partner in the other: same class, boxes overlapping by a high IoU, scores close. Among the boxes that overlap enough, take the closest score, or two near-identical boxes on one object can fail against the wrong twin. Checked both ways, so neither runtime can drop or invent boxes unnoticed.
 
 In Tether: `tether-runtime-compare` checks detections scoring at least 0.25 (the tracker's threshold), and a partner needs IoU ≥ 0.95 and scores within 0.02. The runtimes agree when at least 99% of those detections have one. The tolerance was set before the first comparison on the real model.
 
