@@ -25,7 +25,7 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 - A MOT17 evaluation through TrackEval, and a ByteTrack baseline on the same detections.
 - An Anti-UAV dropout simulator with its own scoring.
 - A single-target prior that knows there's one drone (`--single-target`), kept only as a diagnostic upper bound, never a default.
-- 323 automated tests.
+- 324 automated tests.
 
 **Built (C++):**
 - The same tracker and a `tether-track` CLI with the same options and file formats, built with CMake.
