@@ -2,7 +2,9 @@
 
 `--compare runtimes` (the default) runs ONNX Runtime against TensorRT;
 `--compare cuda-graph` runs TensorRT without its CUDA graph (--no-cuda-graph)
-against TensorRT with it. Two checks, both through `tether-pipeline` (headless):
+against TensorRT with it; `--compare frame-prep` runs TensorRT with CPU frame
+prep against CUDA frame prep (--prep cuda). Two checks, both through
+`tether-pipeline` (headless):
 
 1. Agreement. Each side dumps its detections for every frame (--dump), and
    every detection scoring at least MIN_SCORE on one side must have a
@@ -15,11 +17,12 @@ against TensorRT with it. Two checks, both through `tether-pipeline` (headless):
 2. Timing. Tracking runs on each side for several rounds, in the --pipeline
    mode asked for, the order alternating each round, each run's timing log
    summarized with tether-timing's summary. The detect step is the model run:
-   for TensorRT it includes copying the prepared frame to the GPU and the rows
+   for TensorRT it includes copying the prepared frame to the GPU (or, from
+   CUDA frame prep, from the prep's GPU buffer into the engine's) and the rows
    back.
 
 Speedups are the first side's time over the second's (above 1: the second,
-TensorRT or the CUDA graph, is faster). The results and every dump and timing
+TensorRT, the CUDA graph or CUDA frame prep, is faster). The results and every dump and timing
 log are saved together under --out.
 """
 
@@ -39,7 +42,10 @@ from tether.timing import summarize
 COMPARISONS = {
     "runtimes": (("onnxruntime", "onnxruntime", []), ("tensorrt", "tensorrt", [])),
     "cuda-graph": (("no-cuda-graph", "tensorrt", ["--no-cuda-graph"]), ("cuda-graph", "tensorrt", [])),
+    "frame-prep": (("cpu-prep", "tensorrt", []), ("cuda-prep", "tensorrt", ["--prep", "cuda"])),
 }
+# The step each comparison changes, reported round by round.
+CHANGED_STEP = {"runtimes": "detect", "cuda-graph": "detect", "frame-prep": "prep"}
 RUNTIMES = tuple(name for name, _, _ in COMPARISONS["runtimes"])
 
 # The tolerance, set before the first comparison on a real model.
@@ -127,10 +133,13 @@ def _report(result: dict) -> str:
              f"  partners: worst score difference {a['worst_partnered_score_diff']:.4f}, "
              f"worst box corner difference {a['worst_partnered_box_diff_px']:.3f} px; "
              f"dumps {'byte-identical' if result['dumps_identical'] else 'differ'}"]
+    step = CHANGED_STEP[result["compare"]]
     for i, r in enumerate(result["rounds"], 1):
         a, b, x = r[first], r[second], r["speedup"]
-        lines.append(f"round {i} ({' then '.join(r['order'])}): detect {a['steps_ms']['detect']['mean']:.2f} -> "
-                     f"{b['steps_ms']['detect']['mean']:.2f} ms ({x['steps']['detect']:.2f}x), "
+        before, after = a["frame_time_ms"]["mean"], b["frame_time_ms"]["mean"]
+        lines.append(f"round {i} ({' then '.join(r['order'])}): {step} {a['steps_ms'][step]['mean']:.2f} -> "
+                     f"{b['steps_ms'][step]['mean']:.2f} ms ({x['steps'][step]:.2f}x), "
+                     f"frame time {before:.2f} -> {after:.2f} ms ({before - after:.2f} ms saved), "
                      f"FPS {a['fps']:.1f} -> {b['fps']:.1f} ({x['fps']:.2f}x)")
     return "\n".join(lines)
 
@@ -141,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("video", help="video file both sides run on")
     parser.add_argument("--compare", choices=sorted(COMPARISONS), default="runtimes",
                         help="runtimes (default): ONNX Runtime vs TensorRT; cuda-graph: TensorRT without vs with "
-                             "its CUDA graph")
+                             "its CUDA graph; frame-prep: TensorRT with CPU vs CUDA frame prep")
     parser.add_argument("--pipeline", choices=["sequential", "parallel"], default="sequential",
                         help="pipeline mode of the timing runs (default sequential); the dumps are sequential")
     parser.add_argument("--model", default=str(DEFAULT_MODEL),

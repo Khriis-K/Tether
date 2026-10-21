@@ -3,6 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <opencv2/imgproc.hpp>
+#include <stdexcept>
+
+#ifdef TETHER_HAS_CUDA_PREP
+#include "tether/cuda_frame_prep.hpp"
+#endif
 
 namespace tether {
 
@@ -45,6 +50,24 @@ PreparedFrame CpuFramePrep::prepare(const cv::Mat& frame) {
     }
   }
   return out;
+}
+
+bool cuda_prep_built() {
+#ifdef TETHER_HAS_CUDA_PREP
+  return true;
+#else
+  return false;
+#endif
+}
+
+std::unique_ptr<FramePrep> make_frame_prep(Prep prep, int height, int width) {
+  if (prep == Prep::cpu) return std::make_unique<CpuFramePrep>(height, width);
+#ifdef TETHER_HAS_CUDA_PREP
+  return std::make_unique<CudaFramePrep>(height, width);
+#else
+  throw std::runtime_error("this build has no CUDA frame prep; configure CMake with -DTensorRT_ROOT=<TensorRT folder>, "
+                           "which brings in the CUDA toolkit");
+#endif
 }
 
 }  // namespace tether

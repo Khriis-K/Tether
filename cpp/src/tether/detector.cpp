@@ -72,6 +72,8 @@ OnnxDetector::~OnnxDetector() = default;
 std::pair<int, int> OnnxDetector::input_size() const { return session_->input_size; }
 
 std::vector<Detection> OnnxDetector::detect(const PreparedFrame& prepared) {
+  if (prepared.blob.empty())
+    throw std::invalid_argument("ONNX Runtime runs on the CPU and needs CPU frame prep; this frame's blob is on the GPU");
   std::array<int64_t, 4> shape = {1, 3, prepared.height, prepared.width};
   // ONNX Runtime wants a mutable pointer but only reads an input tensor.
   auto input = Ort::Value::CreateTensor<float>(session_->memory, const_cast<float*>(prepared.blob.data()),

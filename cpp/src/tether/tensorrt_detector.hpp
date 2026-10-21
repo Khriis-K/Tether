@@ -29,8 +29,9 @@ class TensorRtDetector : public Detector {
   std::pair<int, int> input_size() const override;
   // Whether detect replays a captured CUDA graph (false: turned off, or the capture failed).
   bool uses_cuda_graph() const;
-  // Copies the prepared frame to the GPU, runs the engine and copies the rows
-  // back, all inside this call: its time is the whole model run.
+  // Copies the prepared frame to the GPU (from CUDA frame prep, from its GPU
+  // buffer: no trip through the CPU), runs the engine and copies the rows back,
+  // all inside this call: its time is the whole model run.
   std::vector<Detection> detect(const PreparedFrame& prepared) override;
 
  private:

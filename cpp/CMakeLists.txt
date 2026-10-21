@@ -88,6 +88,12 @@ endif()
 set(TensorRT_ROOT "" CACHE PATH "TensorRT release folder (include/, lib/, bin/); empty: build without TensorRT")
 if(TensorRT_ROOT)
   find_package(CUDAToolkit REQUIRED)
+  # CUDA frame prep (--prep cuda) is a kernel of our own, compiled by nvcc for
+  # this laptop's RTX 5070 (Blackwell, compute capability 12.0). With Visual
+  # Studio, pick the toolkit with -T cuda=13.4 as well as CUDAToolkit_ROOT, or
+  # it may compile with another installed one.
+  set(CMAKE_CUDA_ARCHITECTURES 120 CACHE STRING "GPU architectures nvcc builds for")
+  enable_language(CUDA)
   find_path(TensorRT_INCLUDE_DIR NvInferRuntime.h PATHS ${TensorRT_ROOT}/include NO_DEFAULT_PATH REQUIRED)
   find_library(TensorRT_LIBRARY NAMES nvinfer_11 nvinfer_10 nvinfer PATHS ${TensorRT_ROOT}/lib NO_DEFAULT_PATH
     REQUIRED)
@@ -164,10 +170,11 @@ if(${plex_mono_SOURCE_DIR}/LICENSE.txt IS_NEWER_THAN ${PANEL_FONTS_CPP}
   file(WRITE ${PANEL_FONTS_CPP} "${fonts_cpp}")
 endif()
 
+# C++ only: nvcc doesn't take the host compiler's flags directly.
 if(MSVC)
-  add_compile_options(/W4 /permissive- /utf-8)
+  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/W4;/permissive-;/utf-8>")
 else()
-  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic>")
 endif()
 
 add_library(tether_core
@@ -201,8 +208,8 @@ target_link_libraries(tether_pipeline
   PUBLIC tether_core opencv_core opencv_imgproc opencv_imgcodecs opencv_videoio imgui
   PRIVATE onnxruntime)
 if(TensorRT_ROOT)
-  target_sources(tether_pipeline PRIVATE src/tether/tensorrt_detector.cpp)
-  target_compile_definitions(tether_pipeline PUBLIC TETHER_HAS_TENSORRT)
+  target_sources(tether_pipeline PRIVATE src/tether/tensorrt_detector.cpp src/tether/cuda_frame_prep.cu)
+  target_compile_definitions(tether_pipeline PUBLIC TETHER_HAS_TENSORRT TETHER_HAS_CUDA_PREP)
   target_link_libraries(tether_pipeline PRIVATE tensorrt CUDA::cudart_static)
   # NVTX (header-only, from the same toolkit) names each pipeline step on an
   # Nsight Systems timeline; see docs/benchmarks/nsight-profile.md.
@@ -269,6 +276,7 @@ if(TETHER_BUILD_TESTS)
     tests/test_pipeline_cli_mode.cpp
     tests/test_pipeline_cli_outputs.cpp
     tests/test_pipeline_cli_screenshot.cpp
+    tests/test_prep_setting.cpp
     tests/test_run_settings.cpp
     tests/test_runtime_setting.cpp
     tests/test_cuda_graph_setting.cpp
@@ -285,7 +293,8 @@ if(TETHER_BUILD_TESTS)
   tether_copy_runtime_dlls(tether_tests)
   if(TensorRT_ROOT)
     # The stand-in models' engines, built by trtexec when the model is newer.
-    target_sources(tether_tests PRIVATE tests/test_tensorrt_detector.cpp tests/test_cuda_graph.cpp)
+    target_sources(tether_tests PRIVATE tests/test_tensorrt_detector.cpp tests/test_cuda_graph.cpp
+      tests/test_cuda_frame_prep.cpp tests/test_cuda_prep_detector.cpp)
     set(test_engines ${CMAKE_CURRENT_BINARY_DIR}/test-engines)
     set(test_engine_files)
     foreach(model fixed_736x1280 brightness_736x1280)

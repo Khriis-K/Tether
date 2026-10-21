@@ -154,14 +154,23 @@ bool TensorRtDetector::uses_cuda_graph() const { return engine_->graph != nullpt
 
 std::vector<Detection> TensorRtDetector::detect(const PreparedFrame& prepared) {
   auto& e = *engine_;
-  if (prepared.blob.size() != e.input_elements)
+  bool fits = prepared.height == e.input_size.first && prepared.width == e.input_size.second &&
+              (prepared.gpu_blob || prepared.blob.size() == e.input_elements);
+  if (!fits)
     throw std::invalid_argument("prepared frame is " + std::to_string(prepared.height) + "x" +
                                 std::to_string(prepared.width) + ", but the engine takes " +
                                 std::to_string(e.input_size.first) + "x" + std::to_string(e.input_size.second));
   std::vector<float> rows(e.output_elements);
-  check(cudaMemcpyAsync(e.input, prepared.blob.data(), e.input_elements * sizeof(float), cudaMemcpyHostToDevice,
-                        e.stream),
-        "copy to GPU");
+  // From CUDA frame prep, the blob is already on the GPU: a copy within it into
+  // the engine's own input, whose address the CUDA graph has recorded.
+  if (prepared.gpu_blob)
+    check(cudaMemcpyAsync(e.input, prepared.gpu_blob.get(), e.input_elements * sizeof(float),
+                          cudaMemcpyDeviceToDevice, e.stream),
+          "copy on the GPU");
+  else
+    check(cudaMemcpyAsync(e.input, prepared.blob.data(), e.input_elements * sizeof(float), cudaMemcpyHostToDevice,
+                          e.stream),
+          "copy to GPU");
   if (e.graph)
     check(cudaGraphLaunch(e.graph, e.stream), "cudaGraphLaunch");
   else if (!e.context->enqueueV3(e.stream))

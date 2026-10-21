@@ -370,9 +370,16 @@ A recording of GPU work. Put a stream into capture mode, issue the work as usual
 ### Busy share (finding the bottleneck stage)
 A stage's total working time divided by the run's wall time. In a pipeline where each stage has its own thread, the slowest stage is busy nearly all the time, and the others wait. FPS is set by that stage, so speeding up any other one changes nothing.
 
-**In Tether:** at 640 with TensorRT, capture was busy 99.2–99.8% and prep 22.2–64.7%, so a faster prep couldn't raise FPS. At 1280×736 on the Anti-UAV clip, prep was busy 99.1%: the bottleneck. `busy_share` in `tools/nsight_steps.py` computes it from a timing log or a profile, and `tether-model-compare` names each row's slowest stage. In the model-size table (#18) the bottleneck moves with the model: capture for n and s at 640, prep for n at 1280×736, detect for m at 640 and for s and m at 1280×736. So the same CUDA-prep work helps one row and does nothing for its neighbour.
+**In Tether:** at 640 with TensorRT, capture was busy 99.2–99.8% and prep 22.2–64.7%, so a faster prep couldn't raise FPS. At 1280×736 on the Anti-UAV clip, prep was busy 99.1%: the bottleneck. `busy_share` in `tools/nsight_steps.py` computes it from a timing log or a profile, and `tether-model-compare` names each row's slowest stage. In the model-size table (#18) the bottleneck moves with the model: capture for n and s at 640, prep for n at 1280×736, detect for m at 640 and for s and m at 1280×736. So the same CUDA-prep work helps one row and does nothing for its neighbour. #17 bore that out: CUDA prep raised the n-at-1280×736 row from 126.63–127.72 to 195.45–195.86 FPS on the Anti-UAV clip, where capture then became the slowest stage (busy 99.8%), and changed the capture-bound rows by 0.98–1.02×.
 
 ---
+
+### Keeping the frame on the GPU (no round trip through the CPU)
+Data crosses between the CPU's memory and the GPU's over PCIe, which is far slower than either memory. A copy out of ordinary (pageable) memory is slower again: the driver first copies it into a locked staging buffer. So when one GPU step feeds another, the result should stay in GPU memory, and only what the CPU really needs should come back.
+
+**In Tether:** CPU frame prep built an 11.3 MB float blob for the 1280×736 input and TensorRT's detect uploaded it every frame (1.071 ms of GPU time, profiled). CUDA frame prep (#17, `--prep cuda`) uploads the 6.2 MB 8-bit frame instead, builds the blob on the GPU in one kernel (46 µs), and hands TensorRT a pointer to it. Detect then fills the engine's input with a 15.9 µs copy within the GPU, and only the 300 output rows come back. Prep went 9.19–9.22× faster on the Anti-UAV clip at 1280×736, detect 1.46–1.48× (`docs/benchmarks/cuda-prep.md`).
+
+**Gotcha:** a [CUDA graph](#cuda-graph-capture-once-replay-each-frame) recorded the engine's input address, so the blob can't simply be handed over by pointer: either copy it into the engine's fixed buffer (what Tether does), capture a graph per buffer, or have prep write into the engine's buffer. The last one breaks the parallel pipeline, which prepares frame N+1 while detect still reads frame N. Also, uploading the 8-bit frame only moves fewer bytes than uploading the float blob when the input is big: at 640 the blob (4.9 MB) is smaller than the frame (6.2 MB), which is part of why CUDA prep's speedup there is smaller (2.75–4.73×).
 
 ## Python vs. C++
 
@@ -396,6 +403,13 @@ Sometimes "within a tolerance" isn't good enough, and you want both languages to
 **In Tether:** the C++ frame prep and detector write detection files byte-identical to Python's (1000 Anti-UAV frames and 525 MOT17 frames, checked with `cmp`). Three details made that work. Python's `round()` rounds halves to even (2.5 → 2), so C++ uses `std::nearbyint`, not `std::round`. Scaling pixels to [0, 1] divides in float32, as NumPy does. And box decoding is done in float32 too. Under NumPy 2's rules, a float32 array combined with a plain Python number stays float32, so `(x1 - pad) / scale` rounds to float32 at every step. Doing it in double gave 337.66667683919275 where Python gives 337.6666564941406.
 
 **Gotcha:** both shortcuts pass every test that uses round numbers (scale 0.5, scale 1). Only a test with an awkward scale like 0.3, or a size that lands exactly on .5, catches them.
+
+### Fixed-point resize (matching OpenCV's rounding on the GPU)
+To resize an 8-bit image, OpenCV's bilinear `cv::resize` doesn't use floats: it rounds each pixel's two weights per axis to whole numbers out of 2048, adds across and then down in integers, and rounds the total once. Its vectorized code (SSE/AVX) rounds that last step a little differently from its plain C++ code. A GPU kernel that wants OpenCV's output has to copy those integer steps, not just "bilinear interpolation".
+
+**In Tether:** the CUDA frame-prep kernel (#17) computes OpenCV's source pixels and weights with OpenCV's own formula, then does the vectorized code's arithmetic: drop 4 bits, keep the high 16 bits of each product, round off the last 2. With the plain-code rounding instead, 9.1–14.8% of values were one gray level off on 1920×1080 frames into 1280×736. With the vectorized rounding, the blob is bit-identical, so detections with CUDA and CPU prep are byte-identical (`docs/benchmarks/cuda-prep.md`). The test's tolerance is still one gray level, since odd frame sizes can be off by one on a few hundredths of a percent of values, where OpenCV finishes a row with its plain code.
+
+**Gotcha:** which code OpenCV runs depends on the CPU's instruction set, so "bit-identical" is a property of this machine, not a guarantee. And a float tolerance of exactly 1/255 fails on values that are exactly one level apart: 101/255 − 100/255 is a hair over 1/255 in float.
 
 ### Tie-breaking (why the port copies SciPy's solver)
 When two different answers are exactly as good, which one an algorithm returns depends on details like the order it scans its inputs. That's not a bug, but two implementations that both find "an optimal answer" can still disagree.
