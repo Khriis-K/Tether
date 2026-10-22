@@ -214,6 +214,7 @@ All speed targets are for the final C++ version running the shipped configuratio
 - Speed: the drone model in the shipped configuration meets the speed targets above (120+ FPS, P99 under 16 ms) on the Anti-UAV clip.
 - Accuracy targets are set from val results before test is run (#47), each with a reason other than the val score itself. Until then, every number is reported against two references: the pretrained COCO YOLO26n scored class-agnostically (the "before" row), and the labeled-box tracking results (the ceiling).
 - Scoring: a detection is a hit at IoU ≥ 0.5 with the labeled box. Models are compared on AP50. Recall, precision and F1 are reported at the threshold with the best F1 on the session-disjoint val, frozen before test.
+- End-to-end tracking: the tracker runs on the detector's own detections (class-agnostic, nothing deleted on top) and is scored with the dropout tests' ID-kept rule on every frame where the drone is labeled, so the detector's misses count against it. The same clips' labeled boxes are run beside it. The tracker's cutoff is the detector's operating threshold, and its low-score band's floor is 0.4 × the cutoff (0.1 at the default 0.25). See `docs/benchmarks/drone-tracking.md` (#44).
 - Reported, not pass/fail unless #47 says otherwise: transfer to Seraphim test (Anti-UAV frames removed), the share of Drone-vs-Bird bird images with a false drone, and false alarms per minute on Anti-UAV frames with no drone.
 
 **Upgrade payoffs**

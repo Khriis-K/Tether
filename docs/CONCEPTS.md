@@ -169,7 +169,7 @@ A standard pedestrian-tracking benchmark from MOTChallenge: crowded street video
 ### Anti-UAV
 A dataset of drone videos with labeled drone boxes. Drones are small, fast, and often in single-target clips, so it tests different things than crowded MOT17 does.
 
-**In Tether:** we don't run a detector on it. We feed in the *labeled* boxes, delete some on purpose, and see whether the tracker recovers (`tether-antiuav`, results in `docs/benchmarks/antiuav-dropout.md`). A track only "has" the drone if its box overlaps the label with IoU ≥ 0.5; otherwise, with one drone per clip, a track that never dies would look perfect.
+**In Tether:** the dropout tests feed in the *labeled* boxes, delete some on purpose, and see whether the tracker recovers (`tether-antiuav`, results in `docs/benchmarks/antiuav-dropout.md`). Since #44 it's also tracked [end to end](#end-to-end-tracking-on-a-real-detectors-output) on a drone detector's own output. A track only "has" the drone if its box overlaps the label with IoU ≥ 0.5; otherwise, with one drone per clip, a track that never dies would look perfect.
 
 **Gotcha:** the motion a tracker sees is motion *in the image*, which includes the camera's. Anti-UAV300 is filmed by a pan-tilt camera that keeps re-centering on the drone, so the drone swings back and forth across the frame in a sawtooth even when it flies straight. A constant-velocity model predicts one frame ahead fine, but coasting through a few missed frames sends it the wrong way whenever the camera snaps back. Measured on the textured clips: the gimbal holds still, then jumps about 550 px in roughly 5 frames, then holds again (`docs/benchmarks/antiuav-telemetry.md`).
 
@@ -182,7 +182,21 @@ An F1 score for identity: of all the boxes, how many carry the *right* ID over t
 ### ByteTrack
 A well-known, simple, strong tracker, used as the baseline. Its key idea is that low-confidence detections, which most trackers throw away, still get a **second matching pass** against tracks left unmatched by the first pass. That's how it holds onto half-hidden people.
 
-**In Tether:** both trackers get the same *unfiltered* detections, so ByteTrack keeps its second pass and the comparison stays fair. Tether has the same pass: tracks that were tracked last frame and found no detection scored ≥ 0.25 can match one scored between 0.1 and 0.25, at IoU ≥ 0.5. Those weak detections never start a track. The 0.1 and 0.5 are ByteTrack's published values, not tuned.
+**In Tether:** both trackers get the same *unfiltered* detections, so ByteTrack keeps its second pass and the comparison stays fair. Tether has the same pass: tracks that were tracked last frame and found no detection scored ≥ 0.25 can match one scored between 0.1 and 0.25, at IoU ≥ 0.5. Those weak detections never start a track. The 0.1 and 0.5 are ByteTrack's published values, not tuned. Since #44 the 0.1 is a [low-score band that moves with the cutoff](#low-score-band-moving-with-the-cutoff).
+
+### Low-score band (moving with the cutoff)
+The scores a tracker treats as "weak but still worth keeping a track alive on": below its cutoff, above a floor. ByteTrack fixes both, 0.25 and 0.1. Run a detector at another threshold and a fixed floor breaks: under a cutoff of 0.1 the band is empty, and under a high cutoff it's several times wider.
+
+**In Tether:** the floor is 0.4 × the cutoff (`--low-score-ratio`, default 0.4, in both trackers), so at the default 0.25 it's exactly 0.1 and nothing earlier changed. The drone model runs at 0.352 with a band of 0.141–0.352. On the Anti-UAV val, the pass is worth 1.26 points of end-to-end ID kept for the drone model, and where its floor sits doesn't matter, since nearly all its scores are high. For the COCO model at its 0.066 best-F1 cut, a fixed 0.1 floor would have switched the pass off without a word; the rule keeps it, worth 3.7 points (9.5% → 13.2%) (`docs/benchmarks/drone-tracking.md`).
+
+**Gotcha:** the 0.4 is ByteTrack's own proportion (0.1 / 0.25), kept, not fitted. A model whose scores are spread differently could want another ratio, and that's what the flag is for.
+
+### End-to-end tracking (on a real detector's output)
+Scoring the tracker on what a detector actually found, rather than on the labeled boxes. The detector's misses, wrong boxes and jittery scores all reach the tracker, so the score is what the whole system does. It's read next to the same tracker on the labeled boxes, which shows what the detector costs.
+
+**In Tether:** `tether-antiuav --detections DIR` runs the tracker on a folder from `tether-antiuav-detect` and scores ID kept on every frame where the drone is labeled, so a missed frame counts against it and a detector that finds nothing scores 0. Classes are ignored, as in [class-agnostic scoring](#class-agnostic-scoring). On the session-disjoint val the fine-tuned drone model keeps the ID on 89.7% of frames and the COCO model on 10.9%, with the labeled boxes at 87.0% (`docs/benchmarks/drone-tracking.md`, #44).
+
+**Gotcha:** the labeled-box row is called a ceiling, but it's only one if the labels are what a perfect detector would output. On Anti-UAV they aren't quite: they mark a half-visible drone absent, and their box height jumps during camera snaps. The drone model's detections bridged those gaps, so it scored *above* the labels. Check per clip before calling a gap either way.
 
 ### Null-case test
 Before trusting a metric, ask: *what score would a useless system get?* If a tracker that does nothing smart still scores well, the metric isn't measuring what you think.
