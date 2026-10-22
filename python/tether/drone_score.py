@@ -12,7 +12,9 @@ Reported:
   --det-min-score), so it's comparable between dumps with the same floor.
 - Recall, precision and F1 at two thresholds: the best-F1 one on this split
   (or a given one, e.g. frozen from val before test) and the tracker's 0.25.
-  A threshold below the dump's floor is refused.
+  A threshold below the dump's floor is refused, and a best-F1 cut within
+  AT_FLOOR_MARGIN of the lowest saved score is flagged (`at_lowest_saved_score`):
+  F1 may still be rising below it, so the real best cut may be lower.
 - Recall by box size at source resolution: tiny (area under 16^2 px), small
   (under 32^2), medium (under 96^2), large.
 - False alarms per minute: detections on frames where the drone is labeled
@@ -33,6 +35,7 @@ from tether.formats import Detection, load_detections
 from tether.matching import iou
 from tether.tracker import MIN_SCORE
 
+AT_FLOOR_MARGIN = 0.01  # a best-F1 cut this close to the lowest saved score is flagged
 SIZES = (("tiny", 16 ** 2), ("small", 32 ** 2), ("medium", 96 ** 2), ("large", float("inf")))
 
 
@@ -121,6 +124,9 @@ def evaluate(root: str | Path, split_file: str | Path, name: str, detections: st
     threshold = threshold if threshold is not None else best_f1_threshold(m)
     rows = [{**at_threshold(m, threshold), "chosen_by": chosen_by}] if threshold is not None else []
     rows.append({**at_threshold(m, MIN_SCORE), "chosen_by": "the tracker's min score"})
+    for row in rows:  # a best-F1 cut here may not be the real best: F1 can still rise below what was saved
+        row["at_lowest_saved_score"] = (row["chosen_by"] == "best F1 on this split"
+                                        and row["threshold"] - min(m.scores) < AT_FLOOR_MARGIN)
     floor = dump.get("min_score")
     if floor is not None and any(row["threshold"] < floor for row in rows):
         # Detections under the floor were never saved, so recall there would be understated.

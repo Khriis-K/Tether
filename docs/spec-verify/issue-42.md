@@ -1,7 +1,7 @@
 # spec-verify: issue #42, scoring any detector on the leak-free Anti-UAV val
 
 Spec: the acceptance criteria in [issue #42](https://github.com/Khriis-K/Tether/issues/42) and the scoring choices of [ADR 0004](../adr/0004-drone-detector-on-anti-uav.md). Built as `tether.antiuav_split` (the split), `tether.antiuav_detect` (the detection dump) and `tether.drone_score` (the scorer).
-Each row: baseline run on the real code, then one targeted mutation, then the source file restored and byte-compared before the next. Tests are in `python/tests/test_antiuav_split.py`, `test_antiuav_detect.py` and `test_drone_score.py`. 22 of 23 mutations were caught (20 first, 3 more for the review fixes); the survivor is an equivalent mutant (C8).
+Each row: baseline run on the real code, then one targeted mutation, then the source file restored and byte-compared before the next. Tests are in `python/tests/test_antiuav_split.py`, `test_antiuav_detect.py` and `test_drone_score.py`. 25 of 26 mutations were caught (20 first, then 3 and 3 more for the two rounds of review fixes); the survivor is an equivalent mutant (C8).
 
 ### Criterion C1: the split holds out whole sessions, and none is in two splits
 Test: test_a_session_is_the_clip_name_without_its_last_two_fields, test_no_session_is_in_two_splits
@@ -90,4 +90,15 @@ Result: VERIFIED
 
 Test: test_a_threshold_below_the_dumps_score_floor_is_refused
 Mutation: thresholds below the dump's floor are scored.
+Result: VERIFIED
+
+### Second review fixes (with the baseline write-up)
+Test: test_a_best_f1_cut_at_the_lowest_saved_score_is_flagged
+Mutation: the flag is never set.
+Result: VERIFIED
+
+Test (`tools/drone_breakdown.py`, the by-class and by-session tables): test_each_found_drone_is_credited_to_the_class_of_its_best_scored_hit, test_recall_is_split_by_recording_session_over_drone_frames_only
+Mutation: the drone is credited to its first hit, not its best-scored one.
+Result: VERIFIED
+Mutation: drone-absent frames count toward a session's drones.
 Result: VERIFIED

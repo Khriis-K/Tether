@@ -230,9 +230,30 @@ Scoring a model, untouched, on a dataset from a different source than the one it
 ### AP50 (average precision at IoU 0.5)
 A detector score over every confidence threshold. Sort the detections by confidence, trace precision against recall as the threshold drops, and take the area under that curve. A detection is a hit at IoU ≥ 0.5 with a labeled box. One threshold-free number like this is good for comparing models; recall and precision are then reported at the one threshold you actually run.
 
-**In Tether:** the drone models are compared on AP50 (#42), and the operating threshold is the one with the best F1 on val, frozen before test.
+**In Tether:** the drone models are compared on AP50, and the [operating threshold](#operating-threshold-best-f1) is the one with the best F1 on val, frozen before test. `tether-drone-score` cuts tied scores together, so the order of tied detections can't move the score. The pretrained COCO YOLO26n at 1280×736, scored [class-agnostically](#class-agnostic-scoring), gets 0.146 on the session-disjoint val: the "before" row (`docs/benchmarks/drone-coco-baseline.md`, #42).
 
-**Gotcha:** recall alone fails the [null-case test](#null-case-test): a detector that boxes everything gets perfect recall. AP50 doesn't, since a model that outputs nothing, or the same box every frame, scores about 0.
+**Gotcha:** recall alone fails the [null-case test](#null-case-test): a detector that boxes everything gets perfect recall. AP50 doesn't, since a model that outputs nothing, or the same box every frame, scores about 0 (both are unit tests of the scorer). Also, AP only sees the detections that were saved. Tether's detection files keep scores ≥ 0.1, so the curve stops there, and AP50 is a lower bound that's only comparable between dumps with the same floor.
+
+### Class-agnostic scoring
+Scoring a detector on whether it boxed the object, ignoring the class it named. It's how you score a model on a class it was never trained on: count any box that lands on the object.
+
+**In Tether:** the COCO model has no drone class, so for its "before" row any detection counts as a drone. At the tracker's 0.25 it found 14.2% of val drones, most of them as "airplane" (4,083 of 5,414), then "person" and "traffic light"; "bird" found only 42 (`docs/benchmarks/drone-coco-baseline.md`, counted by `tools/drone_breakdown.py`).
+
+**Gotcha:** it cuts both ways. Any wrong class on the drone counts as a hit, but YOLO26 suppresses duplicates per class, not across them, so an "airplane" and a "bird" box on the same drone are one hit plus one false positive.
+
+### Operating threshold (best F1)
+AP50 summarizes every threshold, but a running system uses one. A common choice is the score cut with the best F1 (the balance of recall and precision, 2·TP / (2·TP + FP + FN)) on the validation set, frozen before test, so test never chooses it.
+
+**In Tether:** `tether-drone-score` reports the best-F1 cut on the split it's given, or a threshold you pass (`--threshold`, for test), with the tracker's 0.25 beside it, and flags a best cut within 0.01 of the lowest saved score (`at_lowest_saved_score`). For the COCO baseline the best cut landed exactly on the detection files' 0.1 floor, which means F1 was still rising there and the true best cut is lower (`docs/benchmarks/drone-coco-baseline.md`).
+
+**Gotcha:** a best-F1 cut sitting at the lowest score you saved is a warning, not an answer. It says the files were cut off too high to find the real best.
+
+### False alarms per minute
+How often a detector reports something when there's nothing there, as a rate over time instead of per frame, so clips at different frame rates compare fairly.
+
+**In Tether:** counted only on Anti-UAV frames where the drone is labeled absent, divided by those frames' duration at each clip's own frame rate. The session-disjoint val has just 1,232 such frames (1.03 min), so the COCO baseline's 7.8 per minute at 0.25 is 8 detections: an order of magnitude, not a rate to compare to one decimal (`docs/benchmarks/drone-coco-baseline.md`).
+
+**Gotcha:** it only counts *where nothing is labeled*. A wrong box on a frame with the drone in view is a false positive for precision, not a false alarm here, and an easy background (empty sky) makes a low rate cheap.
 
 ---
 
@@ -521,6 +542,13 @@ Up to Python 3.13, the type annotations on a function are evaluated when the `de
 **In Tether:** `tracker.py` annotated a `Tracker` method with `_Matcher`, an alias defined below the class. The laptop runs 3.14, so all 324 tests passed; the Docker image's Python 3.12 couldn't import the tracker at all, though `pyproject.toml` promises 3.10+. The alias now sits above the class (#19).
 
 **Gotcha:** "the tests pass" only covers the interpreter they ran on. Running them in the image now covers 3.12 as well as the laptop's 3.14, but 3.10 and 3.11, which `pyproject.toml` also claims, are still untested.
+
+### Mutation testing (and equivalent mutants)
+Checking the tests rather than the code: break the code on purpose in one small, targeted way (a `>=` turned into `>`, a check deleted) and see whether some test fails. A mutation no test catches points to a test that doesn't guard what it claims to.
+
+**In Tether:** each issue's `docs/spec-verify/issue-<n>.md` lists one mutation per acceptance criterion, run one at a time, with the file restored and byte-compared before the next. For the drone scorer (#42), 25 of 26 mutations were caught (`docs/spec-verify/issue-42.md`).
+
+**Gotcha:** a surviving mutant isn't always a gap. An *equivalent mutant* changes the code without changing what it computes. In #42, cutting the precision-recall curve once per detection instead of once per distinct score survived, because the counts were already taken with `searchsorted` and repeated cuts add zero area. Explain a survivor before writing a test to kill it.
 
 ### Tracer bullet / vertical slice
 Building a thin piece of functionality that works end to end, all the way through every layer, instead of finishing one layer at a time. You get something working early, and integration problems show up early.

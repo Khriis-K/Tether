@@ -278,3 +278,24 @@ def test_a_threshold_below_the_dumps_score_floor_is_refused(tmp_path, monkeypatc
               "--threshold", "0.5", "--out", str(tmp_path / "results.json")])
 
     assert not (tmp_path / "results.json").exists()
+
+
+def test_a_best_f1_cut_at_the_lowest_saved_score_is_flagged(tmp_path, monkeypatch):
+    # F1 may still be rising below the lowest score the dump kept, so that cut isn't a real optimum.
+    clips = {"c1": Clip(name="c1", fps=20.0, boxes=[DRONE_BOX] * 2), "c2": Clip(name="c2", fps=20.0, boxes=[DRONE_BOX])}
+    monkeypatch.setattr("tether.drone_score.load_clip", lambda d: clips[d.name])
+    dets = tmp_path / "dets"
+    dets.mkdir()
+    save_detections(dets / "c1.jsonl", [[det(DRONE_BOX, 0.9)], [det(DRONE_BOX, 0.3)]])  # best cut 0.3, the lowest
+    save_detections(dets / "c2.jsonl", [[det((50.0, 50.0, 60.0, 60.0), 0.5)]])
+    out = tmp_path / "results.json"
+
+    main(["data/Anti-UAV300", str(dets), "--split-file", str(write_split(tmp_path, ["c1", "c2"])), "--out", str(out)])
+
+    rows = json.loads(out.read_text(encoding="utf-8"))["thresholds"]
+    assert rows[0]["threshold"] == pytest.approx(0.3)
+    assert rows[0]["at_lowest_saved_score"] is True
+    assert rows[1]["at_lowest_saved_score"] is False
+
+
+DRONE_BOX = (0.0, 0.0, 10.0, 10.0)
