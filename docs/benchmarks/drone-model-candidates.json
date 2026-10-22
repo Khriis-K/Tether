@@ -1,0 +1,618 @@
+[
+  {
+    "model": "yolo26n_drone_1280x736_pilot",
+    "detections": "C:\\Projects\\Tether\\results\\antiuav-trt\\detections\\yolo26n_drone_1280x736_pilot\\val",
+    "split": {
+      "file": "splits\\antiuav.json",
+      "name": "val",
+      "seed": 0
+    },
+    "clips": 42,
+    "min_iou": 0.5,
+    "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, every other detection is a false positive",
+    "min_score": 0.01,
+    "ap50": 0.9459448758261841,
+    "thresholds": [
+      {
+        "threshold": 0.23625338077545166,
+        "recall": 0.8830849673202614,
+        "precision": 0.9089147808303958,
+        "f1": 0.8958137191200456,
+        "found": 33778,
+        "drones": 38250,
+        "detections": 37163,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 1,
+            "drones": 12,
+            "recall": 0.08333333333333333
+          },
+          "medium": {
+            "found": 17040,
+            "drones": 20530,
+            "recall": 0.830004870920604
+          },
+          "large": {
+            "found": 16737,
+            "drones": 17700,
+            "recall": 0.9455932203389831
+          }
+        },
+        "false_alarms": 28,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 27.272727272727273,
+        "chosen_by": "best F1 on this split",
+        "at_lowest_saved_score": false
+      },
+      {
+        "threshold": 0.25,
+        "recall": 0.8764705882352941,
+        "precision": 0.9151584636802883,
+        "f1": 0.8953968190376989,
+        "found": 33525,
+        "drones": 38250,
+        "detections": 36633,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 1,
+            "drones": 12,
+            "recall": 0.08333333333333333
+          },
+          "medium": {
+            "found": 16894,
+            "drones": 20530,
+            "recall": 0.8228933268387725
+          },
+          "large": {
+            "found": 16630,
+            "drones": 17700,
+            "recall": 0.93954802259887
+          }
+        },
+        "false_alarms": 26,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 25.324675324675326,
+        "chosen_by": "the tracker's min score",
+        "at_lowest_saved_score": false
+      }
+    ]
+  },
+  {
+    "model": "yolo26n_drone_1280x736_e13",
+    "detections": "C:\\Projects\\Tether\\results\\antiuav-trt\\detections\\yolo26n_drone_1280x736_e13\\val",
+    "split": {
+      "file": "splits\\antiuav.json",
+      "name": "val",
+      "seed": 0
+    },
+    "clips": 42,
+    "min_iou": 0.5,
+    "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, every other detection is a false positive",
+    "min_score": 0.01,
+    "ap50": 0.9938615130217917,
+    "thresholds": [
+      {
+        "threshold": 0.3853840231895447,
+        "recall": 0.9870849673202614,
+        "precision": 0.9921168803867983,
+        "f1": 0.9895945272979845,
+        "found": 37756,
+        "drones": 38250,
+        "detections": 38056,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 2,
+            "drones": 12,
+            "recall": 0.16666666666666666
+          },
+          "medium": {
+            "found": 20196,
+            "drones": 20530,
+            "recall": 0.9837311251826595
+          },
+          "large": {
+            "found": 17558,
+            "drones": 17700,
+            "recall": 0.9919774011299435
+          }
+        },
+        "false_alarms": 46,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 44.80519480519481,
+        "chosen_by": "best F1 on this split",
+        "at_lowest_saved_score": false
+      },
+      {
+        "threshold": 0.25,
+        "recall": 0.9904575163398692,
+        "precision": 0.9876945537972208,
+        "f1": 0.9890741054994975,
+        "found": 37885,
+        "drones": 38250,
+        "detections": 38357,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20265,
+            "drones": 20530,
+            "recall": 0.9870920603994154
+          },
+          "large": {
+            "found": 17617,
+            "drones": 17700,
+            "recall": 0.9953107344632769
+          }
+        },
+        "false_alarms": 61,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 59.41558441558442,
+        "chosen_by": "the tracker's min score",
+        "at_lowest_saved_score": false
+      }
+    ]
+  },
+  {
+    "model": "yolo26n_drone_1280x736_e16",
+    "detections": "C:\\Projects\\Tether\\results\\antiuav-trt\\detections\\yolo26n_drone_1280x736_e16\\val",
+    "split": {
+      "file": "splits\\antiuav.json",
+      "name": "val",
+      "seed": 0
+    },
+    "clips": 42,
+    "min_iou": 0.5,
+    "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, every other detection is a false positive",
+    "min_score": 0.01,
+    "ap50": 0.9943742267736612,
+    "thresholds": [
+      {
+        "threshold": 0.2746850848197937,
+        "recall": 0.9913202614379085,
+        "precision": 0.9940750838926175,
+        "f1": 0.992695761447234,
+        "found": 37918,
+        "drones": 38250,
+        "detections": 38144,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20257,
+            "drones": 20530,
+            "recall": 0.986702386751096
+          },
+          "large": {
+            "found": 17658,
+            "drones": 17700,
+            "recall": 0.9976271186440678
+          }
+        },
+        "false_alarms": 66,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 64.28571428571429,
+        "chosen_by": "best F1 on this split",
+        "at_lowest_saved_score": false
+      },
+      {
+        "threshold": 0.25,
+        "recall": 0.9916339869281046,
+        "precision": 0.9933740146138333,
+        "f1": 0.9925032381301271,
+        "found": 37930,
+        "drones": 38250,
+        "detections": 38183,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20265,
+            "drones": 20530,
+            "recall": 0.9870920603994154
+          },
+          "large": {
+            "found": 17662,
+            "drones": 17700,
+            "recall": 0.9978531073446327
+          }
+        },
+        "false_alarms": 74,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 72.07792207792208,
+        "chosen_by": "the tracker's min score",
+        "at_lowest_saved_score": false
+      }
+    ]
+  },
+  {
+    "model": "yolo26n_drone_1280x736_e17",
+    "detections": "C:\\Projects\\Tether\\results\\antiuav-trt\\detections\\yolo26n_drone_1280x736_e17\\val",
+    "split": {
+      "file": "splits\\antiuav.json",
+      "name": "val",
+      "seed": 0
+    },
+    "clips": 42,
+    "min_iou": 0.5,
+    "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, every other detection is a false positive",
+    "min_score": 0.01,
+    "ap50": 0.9948021778658653,
+    "thresholds": [
+      {
+        "threshold": 0.41568508744239807,
+        "recall": 0.9910326797385621,
+        "precision": 0.9940994440365047,
+        "f1": 0.9925636930166793,
+        "found": 37907,
+        "drones": 38250,
+        "detections": 38132,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20237,
+            "drones": 20530,
+            "recall": 0.9857282026302971
+          },
+          "large": {
+            "found": 17667,
+            "drones": 17700,
+            "recall": 0.998135593220339
+          }
+        },
+        "false_alarms": 42,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 40.909090909090914,
+        "chosen_by": "best F1 on this split",
+        "at_lowest_saved_score": false
+      },
+      {
+        "threshold": 0.25,
+        "recall": 0.9933333333333333,
+        "precision": 0.9902783569641368,
+        "f1": 0.9918034926518573,
+        "found": 37995,
+        "drones": 38250,
+        "detections": 38368,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20311,
+            "drones": 20530,
+            "recall": 0.9893326838772528
+          },
+          "large": {
+            "found": 17681,
+            "drones": 17700,
+            "recall": 0.9989265536723164
+          }
+        },
+        "false_alarms": 66,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 64.28571428571429,
+        "chosen_by": "the tracker's min score",
+        "at_lowest_saved_score": false
+      }
+    ]
+  },
+  {
+    "model": "yolo26n_drone_1280x736_e18",
+    "detections": "C:\\Projects\\Tether\\results\\antiuav-trt\\detections\\yolo26n_drone_1280x736_e18\\val",
+    "split": {
+      "file": "splits\\antiuav.json",
+      "name": "val",
+      "seed": 0
+    },
+    "clips": 42,
+    "min_iou": 0.5,
+    "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, every other detection is a false positive",
+    "min_score": 0.01,
+    "ap50": 0.9948500676754963,
+    "thresholds": [
+      {
+        "threshold": 0.3391117751598358,
+        "recall": 0.9924183006535948,
+        "precision": 0.9946025258083111,
+        "f1": 0.9935092127303182,
+        "found": 37960,
+        "drones": 38250,
+        "detections": 38166,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20304,
+            "drones": 20530,
+            "recall": 0.9889917194349732
+          },
+          "large": {
+            "found": 17653,
+            "drones": 17700,
+            "recall": 0.9973446327683616
+          }
+        },
+        "false_alarms": 63,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 61.36363636363637,
+        "chosen_by": "best F1 on this split",
+        "at_lowest_saved_score": false
+      },
+      {
+        "threshold": 0.25,
+        "recall": 0.9936470588235294,
+        "precision": 0.9922203367706566,
+        "f1": 0.9929331852916204,
+        "found": 38007,
+        "drones": 38250,
+        "detections": 38305,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20331,
+            "drones": 20530,
+            "recall": 0.9903068679980517
+          },
+          "large": {
+            "found": 17673,
+            "drones": 17700,
+            "recall": 0.9984745762711864
+          }
+        },
+        "false_alarms": 88,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 85.71428571428572,
+        "chosen_by": "the tracker's min score",
+        "at_lowest_saved_score": false
+      }
+    ]
+  },
+  {
+    "model": "yolo26n_drone_1280x736_e19",
+    "detections": "C:\\Projects\\Tether\\results\\antiuav-trt\\detections\\yolo26n_drone_1280x736_e19\\val",
+    "split": {
+      "file": "splits\\antiuav.json",
+      "name": "val",
+      "seed": 0
+    },
+    "clips": 42,
+    "min_iou": 0.5,
+    "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, every other detection is a false positive",
+    "min_score": 0.01,
+    "ap50": 0.9950294396677869,
+    "thresholds": [
+      {
+        "threshold": 0.3524462878704071,
+        "recall": 0.9924444444444445,
+        "precision": 0.9950980392156863,
+        "f1": 0.9937694704049844,
+        "found": 37961,
+        "drones": 38250,
+        "detections": 38148,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20301,
+            "drones": 20530,
+            "recall": 0.9888455918168534
+          },
+          "large": {
+            "found": 17657,
+            "drones": 17700,
+            "recall": 0.9975706214689265
+          }
+        },
+        "false_alarms": 48,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 46.753246753246756,
+        "chosen_by": "best F1 on this split",
+        "at_lowest_saved_score": false
+      },
+      {
+        "threshold": 0.25,
+        "recall": 0.99359477124183,
+        "precision": 0.9922199305537426,
+        "f1": 0.9929068749755071,
+        "found": 38005,
+        "drones": 38250,
+        "detections": 38303,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20329,
+            "drones": 20530,
+            "recall": 0.9902094495859718
+          },
+          "large": {
+            "found": 17673,
+            "drones": 17700,
+            "recall": 0.9984745762711864
+          }
+        },
+        "false_alarms": 64,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 62.337662337662344,
+        "chosen_by": "the tracker's min score",
+        "at_lowest_saved_score": false
+      }
+    ]
+  },
+  {
+    "model": "yolo26n_drone_1280x736_e20",
+    "detections": "C:\\Projects\\Tether\\results\\antiuav-trt\\detections\\yolo26n_drone_1280x736_e20\\val",
+    "split": {
+      "file": "splits\\antiuav.json",
+      "name": "val",
+      "seed": 0
+    },
+    "clips": 42,
+    "min_iou": 0.5,
+    "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, every other detection is a false positive",
+    "min_score": 0.01,
+    "ap50": 0.9949524576391092,
+    "thresholds": [
+      {
+        "threshold": 0.34677281975746155,
+        "recall": 0.9927058823529412,
+        "precision": 0.9949950212253027,
+        "f1": 0.9938491336439302,
+        "found": 37971,
+        "drones": 38250,
+        "detections": 38162,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20303,
+            "drones": 20530,
+            "recall": 0.9889430102289333
+          },
+          "large": {
+            "found": 17665,
+            "drones": 17700,
+            "recall": 0.9980225988700565
+          }
+        },
+        "false_alarms": 47,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 45.77922077922078,
+        "chosen_by": "best F1 on this split",
+        "at_lowest_saved_score": false
+      },
+      {
+        "threshold": 0.25,
+        "recall": 0.9937777777777778,
+        "precision": 0.9924026838628828,
+        "f1": 0.9930897548103929,
+        "found": 38012,
+        "drones": 38250,
+        "detections": 38303,
+        "recall_by_size": {
+          "tiny": {
+            "found": 0,
+            "drones": 8,
+            "recall": 0.0
+          },
+          "small": {
+            "found": 3,
+            "drones": 12,
+            "recall": 0.25
+          },
+          "medium": {
+            "found": 20328,
+            "drones": 20530,
+            "recall": 0.9901607403799318
+          },
+          "large": {
+            "found": 17681,
+            "drones": 17700,
+            "recall": 0.9989265536723164
+          }
+        },
+        "false_alarms": 62,
+        "absent_minutes": 1.0266666666666666,
+        "false_alarms_per_minute": 60.38961038961039,
+        "chosen_by": "the tracker's min score",
+        "at_lowest_saved_score": false
+      }
+    ]
+  }
+]

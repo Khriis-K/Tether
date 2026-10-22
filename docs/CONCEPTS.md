@@ -230,9 +230,9 @@ Scoring a model, untouched, on a dataset from a different source than the one it
 ### AP50 (average precision at IoU 0.5)
 A detector score over every confidence threshold. Sort the detections by confidence, trace precision against recall as the threshold drops, and take the area under that curve. A detection is a hit at IoU ≥ 0.5 with a labeled box. One threshold-free number like this is good for comparing models; recall and precision are then reported at the one threshold you actually run.
 
-**In Tether:** the drone models are compared on AP50, and the [operating threshold](#operating-threshold-best-f1) is the one with the best F1 on val, frozen before test. `tether-drone-score` cuts tied scores together, so the order of tied detections can't move the score. The pretrained COCO YOLO26n at 1280×736, scored [class-agnostically](#class-agnostic-scoring), gets 0.146 on the session-disjoint val: the "before" row (`docs/benchmarks/drone-coco-baseline.md`, #42).
+**In Tether:** the drone models are compared on AP50, and the [operating threshold](#operating-threshold-best-f1) is the one with the best F1 on val, frozen before test. `tether-drone-score` cuts tied scores together, so the order of tied detections can't move the score. The pretrained COCO YOLO26n at 1280×736, scored [class-agnostically](#class-agnostic-scoring), gets 0.146 on the session-disjoint val with scores saved down to 0.1 (#42), and 0.228 down to 0.01 (#43): the "before" row (`docs/benchmarks/drone-coco-baseline.md`). The [fine-tuned](#fine-tuning) drone model gets 0.995 at the 0.01 floor (`docs/benchmarks/drone-model.md`).
 
-**Gotcha:** recall alone fails the [null-case test](#null-case-test): a detector that boxes everything gets perfect recall. AP50 doesn't, since a model that outputs nothing, or the same box every frame, scores about 0 (both are unit tests of the scorer). Also, AP only sees the detections that were saved. Tether's detection files keep scores ≥ 0.1, so the curve stops there, and AP50 is a lower bound that's only comparable between dumps with the same floor.
+**Gotcha:** recall alone fails the [null-case test](#null-case-test): a detector that boxes everything gets perfect recall. AP50 doesn't, since a model that outputs nothing, or the same box every frame, scores about 0 (both are unit tests of the scorer). Also, AP only sees the detections that were saved. Tether's detection files keep scores ≥ 0.1 by default, so the curve stops there, and AP50 is a lower bound that's only comparable between dumps with the same floor. Lowering the floor to 0.01 moved the COCO model from 0.146 to 0.228 while its recall, precision and false alarms at 0.1 and 0.25 stayed the same, so drone dumps use 0.01 since #43.
 
 ### Class-agnostic scoring
 Scoring a detector on whether it boxed the object, ignoring the class it named. It's how you score a model on a class it was never trained on: count any box that lands on the object.
@@ -244,7 +244,7 @@ Scoring a detector on whether it boxed the object, ignoring the class it named. 
 ### Operating threshold (best F1)
 AP50 summarizes every threshold, but a running system uses one. A common choice is the score cut with the best F1 (the balance of recall and precision, 2·TP / (2·TP + FP + FN)) on the validation set, frozen before test, so test never chooses it.
 
-**In Tether:** `tether-drone-score` reports the best-F1 cut on the split it's given, or a threshold you pass (`--threshold`, for test), with the tracker's 0.25 beside it, and flags a best cut within 0.01 of the lowest saved score (`at_lowest_saved_score`). For the COCO baseline the best cut landed exactly on the detection files' 0.1 floor, which means F1 was still rising there and the true best cut is lower (`docs/benchmarks/drone-coco-baseline.md`).
+**In Tether:** `tether-drone-score` reports the best-F1 cut on the split it's given, or a threshold you pass (`--threshold`, for test), with the tracker's 0.25 beside it, and flags a best cut within 0.01 of the lowest saved score (`at_lowest_saved_score`). For the COCO baseline the best cut landed exactly on the detection files' 0.1 floor, which means F1 was still rising there and the true best cut is lower. Redumped at a 0.01 floor it's 0.066, inside the saved range (`docs/benchmarks/drone-coco-baseline.md`). The drone model's is 0.352, the threshold frozen for test (`docs/benchmarks/drone-model.md`).
 
 **Gotcha:** a best-F1 cut sitting at the lowest score you saved is a warning, not an answer. It says the files were cut off too high to find the real best.
 
@@ -253,7 +253,7 @@ How often a detector reports something when there's nothing there, as a rate ove
 
 **In Tether:** counted only on Anti-UAV frames where the drone is labeled absent, divided by those frames' duration at each clip's own frame rate. The session-disjoint val has just 1,232 such frames (1.03 min), so the COCO baseline's 7.8 per minute at 0.25 is 8 detections: an order of magnitude, not a rate to compare to one decimal (`docs/benchmarks/drone-coco-baseline.md`).
 
-**Gotcha:** it only counts *where nothing is labeled*. A wrong box on a frame with the drone in view is a false positive for precision, not a false alarm here, and an easy background (empty sky) makes a low rate cheap.
+**Gotcha:** it only counts *where nothing is labeled*. A wrong box on a frame with the drone in view is a false positive for precision, not a false alarm here, and an easy background (empty sky) makes a low rate cheap. It also trusts the label. The fine-tuned drone model's 48 "false alarms" on val (46.8 a minute) are almost all the drone half out of view, labeled absent: 47 of them come within 10 frames of a labeled drone or touch the frame's edge (`docs/benchmarks/drone-model.md`). A better detector scored a worse rate, because it found drones the labels had given up on.
 
 ---
 
@@ -323,9 +323,16 @@ Two separate choices. The **benchmark detection set** is what a tracker comparis
 ### Fine-tuning
 Starting from a model already trained on a big general dataset and training it a little further on your own data, instead of training from scratch. It keeps what the model already knows about edges, shapes and objects, so a few thousand frames can be enough.
 
-**In Tether:** the drone detector is YOLO26n, pretrained on COCO, fine-tuned on Anti-UAV with a single class, "drone" (ADR 0004). It's a separate model beside the COCO one, picked with `--model`.
+**In Tether:** the drone detector is YOLO26n, pretrained on COCO, fine-tuned on Anti-UAV with a single class, "drone" (ADR 0004). It's a separate model beside the COCO one, `models/yolo26n_drone_1280x736.onnx`, picked with `--model`. 17,227 frames (every 10th) and 20 epochs (3.39 h on the laptop GPU) took val AP50 from 0.228 to 0.995, and one epoch already reached 0.946 (`docs/benchmarks/drone-model.md`, #43).
 
 **Gotcha:** fine-tuning on new classes alone makes the model forget its old ones ("catastrophic forgetting"). That's why the drone model doesn't replace the COCO model: keeping people *and* drones in one model would mean mixing COCO images back into training and re-running every MOT17 number.
+
+### Checkpoint selection (and a saturated metric)
+Training saves a model after every epoch, and you have to pick which one to ship. The usual way is the epoch with the best score on val, using the metric you'll report, with the rule fixed before you look at the scores so the choice can't follow the noise.
+
+**In Tether:** Ultralytics' own val mAP50 (stride-10 val images, a 1280 square) flattened at 0.994–0.995 from epoch 7 on, so it couldn't separate the late epochs. It only shortlisted them: its top three plus the last were exported, run on TensorRT over every val frame, and scored with `tether-drone-score`, and the highest AP50 shipped. Its top three were cut through a tie at the fifth decimal, so the three epochs tied at the cut were scored too. Epoch 19 won by 0.00008 over epoch 20, a tie in practice (`docs/benchmarks/drone-model.md`, #43).
+
+**Gotcha:** a metric at its ceiling looks like a result but can't make a choice. When the candidates sit within the val's noise, any rule picks one arbitrarily, so say "tied" rather than "best". And a library's built-in val metric is computed its own way: images, resizing and score floor all differ from the scorer you report with.
 
 ### GPU containers (NVIDIA Container Toolkit)
 A Docker container normally can't see the GPU. The NVIDIA Container Toolkit adds a runtime that, when you pass `docker run --gpus all`, mounts the host's GPU devices and driver libraries into the container. The container brings its own CUDA toolkit and TensorRT; only the **driver** comes from the host, so the host driver just has to be new enough for the container's CUDA version. NVIDIA publishes ready images (`nvcr.io/nvidia/tensorrt`) with CUDA, TensorRT and `trtexec` installed.

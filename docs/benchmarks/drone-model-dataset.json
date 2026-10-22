@@ -1,0 +1,16 @@
+{
+  "split_file": "splits\\antiuav.json",
+  "split_seed": 0,
+  "stride": 10,
+  "width": 1280,
+  "train": {
+    "images": 17227,
+    "absent_images": 997,
+    "source_absent_share": 0.0569676538115028
+  },
+  "val": {
+    "images": 3953,
+    "absent_images": 122,
+    "source_absent_share": 0.03120409300440707
+  }
+}
