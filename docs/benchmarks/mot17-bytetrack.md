@@ -13,6 +13,8 @@ Run 2026-10-18 for #7; Tether rows rerun 2026-10-18 for #23, after it began matc
 
 The 1280×736 rows are the headline (ADR 0002). Recall and precision are CLEAR's, at IoU 0.5.
 
+*Update (2026-10-21): #36's duplicate-track merge, now the default, makes Tether's 1280×736 row 41.46 / 49.38 / 732 ID switches; 640 is unchanged ([antiuav-duplicates.md](antiuav-duplicates.md), reproduced in [docker-reproduction.md](docker-reproduction.md)).*
+
 **Against the SPEC targets** (HOTA within 2 points, IDF1 and ID switches at least as good):
 
 - **1280×736:** all three are met: HOTA 41.46 vs 40.86, IDF1 49.38 vs 48.63, ID switches 731 vs 800.

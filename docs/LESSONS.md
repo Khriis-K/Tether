@@ -45,6 +45,8 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 
 **Built (Docker, #19):** a Linux image on NVIDIA's TensorRT container (`docker/Dockerfile`) that builds the C++ programs with TensorRT and CUDA frame prep, installs the Python package, and with one command (`docker/benchmark.sh`) exports the models, builds the engine, and runs the timing, MOT17 + ByteTrack and Anti-UAV benchmarks into `results/`. The C++ and Python test suites both pass inside it. How to run it: `docs/DOCKER.md`.
 
+**Built (README, #20):** the README now leads with a demo video (`docs/media/demo-mot17-09.mp4`, MOT17-09 recorded with `tether-pipeline --record` in the shipped configuration, with an animated preview), a table of every spec target marked met or missed, and one benchmark table per comparison, each linking its write-up.
+
 **Opt-in, not the defaults:** TensorRT and CUDA frame prep need an NVIDIA GPU and, outside Docker, TensorRT's login-gated download.
 
 ### Headline results
