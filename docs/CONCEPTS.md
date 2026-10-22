@@ -237,7 +237,7 @@ Scoring a model on data it was trained on. The numbers look great and mean nothi
 ### Transfer test (out-of-distribution evaluation)
 Scoring a model, untouched, on a dataset from a different source than the one it trained on. A held-out test split only shows the model works on more footage *like* its training data. A transfer test asks whether it works elsewhere, and the gap between the two scores measures how far it generalizes.
 
-**In Tether:** all of Anti-UAV300 comes from two days and one camera, so Anti-UAV test can't show the drone detector works anywhere else. Seraphim's test split, never trained on, is the transfer test. Anti-UAV frames are scanned for (by the turret's overlay) and dropped first, since Seraphim merges 23 sources and can't rule them out (ADR 0004).
+**In Tether:** all of Anti-UAV300 comes from two days and one camera, so Anti-UAV test can't show the drone detector works anywhere else. Seraphim's test split, never trained on, is the transfer test. Since Seraphim merges 23 sources and can't rule Anti-UAV out, its images were scanned for the turret's overlay first ([contamination check](#contamination-check-finding-one-dataset-inside-another)). None was found, so all 8,349 are used. The COCO model scores AP50 0.216 there, against 0.228 on the Anti-UAV val, both at a 0.01 floor (`docs/benchmarks/drone-transfer-sets.md`, #45).
 
 **Gotcha:** a transfer test only counts if nothing about it was tuned. Train on the second dataset and its test becomes in-distribution, possibly leaky. That's why Seraphim stays out of training even though it would probably make a better detector.
 
@@ -268,6 +268,27 @@ How often a detector reports something when there's nothing there, as a rate ove
 **In Tether:** counted only on Anti-UAV frames where the drone is labeled absent, divided by those frames' duration at each clip's own frame rate. The session-disjoint val has just 1,232 such frames (1.03 min), so the COCO baseline's 7.8 per minute at 0.25 is 8 detections: an order of magnitude, not a rate to compare to one decimal (`docs/benchmarks/drone-coco-baseline.md`).
 
 **Gotcha:** it only counts *where nothing is labeled*. A wrong box on a frame with the drone in view is a false positive for precision, not a false alarm here, and an easy background (empty sky) makes a low rate cheap. It also trusts the label. The fine-tuned drone model's 48 "false alarms" on val (46.8 a minute) are almost all the drone half out of view, labeled absent: 47 of them come within 10 frames of a labeled drone or touch the frame's edge (`docs/benchmarks/drone-model.md`). A better detector scored a worse rate, because it found drones the labels had given up on.
+
+### Empty sky (a negative set defined by a rule)
+The frames a false-alarm rate is counted on should hold nothing the detector is right to find. "Labeled absent" isn't enough when labels give up on a target that's still partly in view. So the negative set is defined by a rule that reads only labels and frame indices, fixed before test, and applied to test blind.
+
+**In Tether:** a frame is empty sky if the drone is labeled absent and no labeled drone is within 2 s before or after it in the clip. The frames just past either end of the clip count as possibly holding the drone. It keeps 605 of val's 1,232 drone-absent frames (0.50 min) and 2,704 of test's 5,650 (2.25 min). On val, the drone model's 48 alarms at 0.352 on drone-absent frames become 0 on empty sky (`splits/antiuav-empty-sky.json`, `docs/benchmarks/drone-transfer-sets.md`, #45).
+
+**Gotcha:** the margin was justified partly by the very detections it removes on val (the furthest was 36 frames from a labeled drone, 4 inside the 40-frame margin), so val's 0 isn't independent evidence; test is. And a rule like this shrinks the set: val's empty sky is 80% one clip.
+
+### Perceptual hash (near-duplicate removal)
+A short fingerprint of what an image looks like, not its bytes, so a resized, recompressed or slightly brightened copy gets nearly the same hash. pHash shrinks the image to 32×32 grayscale, takes its DCT, and sets one bit per low frequency (8×8 of them) by whether it's above their median. Near-duplicates are images whose hashes differ in only a few of the 64 bits (Hamming distance).
+
+**In Tether:** the Drone-vs-Bird bird test images are walked in number order, and one is kept unless it's within 10 bits of an image already kept (`tether.near_duplicates`). 361 become 86. Most drops are frames from a few bird videos: one image absorbs 32 others (`splits/drone-vs-bird-bt.json`, #45).
+
+**Gotcha:** frames from one video can be 14–20 bits apart, the same scene with the bird in another pose, so "deduplicated" doesn't mean independent. 86 images from a handful of videos carry less evidence than 86 separate photos. And the greedy walk compares only with *kept* images, so the result doesn't depend on chains of drops.
+
+### Contamination check (finding one dataset inside another)
+A test set merged from many sources may contain copies of your training data, which would turn a transfer test back into an in-distribution one. When the source isn't recorded, look for something only the training data has, and test the detector for it on real training frames (all should be found) and on the test set by eye (none wrongly found).
+
+**In Tether:** every Anti-UAV frame has the turret's reticle at fixed places. `tether.antiuav_overlay` scores how strongly those twelve line segments stand out, minus the same measure just beside them, after mapping an image back to 1920×1080. 681 real train and val frames, resized, letterboxed, stretched, mirrored and JPEG-compressed, all score 21 or more. All 8,349 Seraphim test images score 0 or less, and 432 checked by eye hold no Anti-UAV frame, so none were dropped (`docs/benchmarks/drone-transfer-sets.md`, #45).
+
+**Gotcha:** the check only knows the forms you tested. Rotated, sheared or cropped copies (Roboflow augmentations) and Anti-UAV's infrared overlay would pass. The by-eye sample bounds what slipped through (0 of 384 random images: under about 1% at 95% confidence by the rule of three), but doesn't make it zero.
 
 ---
 

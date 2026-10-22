@@ -18,7 +18,13 @@ Reported:
 - Recall by box size at source resolution: tiny (area under 16^2 px), small
   (under 32^2), medium (under 96^2), large.
 - False alarms per minute: detections on frames where the drone is labeled
-  absent, over those frames' duration at each clip's own frame rate.
+  absent, over those frames' duration at each clip's own frame rate. With
+  --empty-sky, only on the frames a tether-empty-sky list names.
+
+tether-drone-score-images is the image-folder mode, for a tether-image-detect
+dump: against YOLO-format labels (several drones per image, claimed greedily
+by score) it reports the same AP50 and rows; on drone-free images (birds) it
+reports the share of images with any detection at the threshold.
 """
 
 import argparse
@@ -31,7 +37,8 @@ import numpy as np
 
 from tether.antiuav import MIN_IOU, Clip, load_clip
 from tether.antiuav_split import DEFAULT_SPLIT_FILE, clip_dirs, load_split
-from tether.formats import Detection, load_detections
+from tether.empty_sky import load_empty_sky
+from tether.formats import Box, Detection, load_detections
 from tether.matching import iou
 from tether.tracker import MIN_SCORE
 
@@ -48,18 +55,61 @@ class Matches:
     absent_minutes: float
 
 
-def match_clip(clip: Clip, frames: list[list[Detection]], min_iou: float = MIN_IOU) -> Matches:
+def match_clip(clip: Clip, frames: list[list[Detection]], min_iou: float = MIN_IOU,
+               sky: set[int] | None = None) -> Matches:
+    """With `sky` (tether.empty_sky's frames for this clip), false alarms count on those frames only."""
     if len(frames) != len(clip.boxes):
         raise ValueError(f"{clip.name}: {len(frames)} frames of detections, but {len(clip.boxes)} labeled")
+    if sky is not None and any(clip.boxes[f] is not None for f in sky):
+        raise ValueError(f"{clip.name}: an empty-sky frame has the drone labeled")
     drones, scores, absent_scores = [], [], []
-    for box, dets in zip(clip.boxes, frames):
+    for i, (box, dets) in enumerate(zip(clip.boxes, frames)):
         scores += [d.score for d in dets]
         if box is None:
-            absent_scores += [d.score for d in dets]
+            if sky is None or i in sky:
+                absent_scores += [d.score for d in dets]
             continue
         hits = [d.score for d in dets if iou(d.box, box) >= min_iou]
-        drones.append(((box[2] - box[0]) * (box[3] - box[1]), max(hits) if hits else None))
-    return Matches(drones, scores, absent_scores, (len(clip.boxes) - len(drones)) / clip.fps / 60)
+        drones.append((_area(box), max(hits) if hits else None))
+    absent_frames = len(clip.boxes) - len(drones) if sky is None else len(sky)
+    return Matches(drones, scores, absent_scores, absent_frames / clip.fps / 60)
+
+
+def match_images(truth: list[list[Box]], frames: list[list[Detection]], min_iou: float = MIN_IOU) -> Matches:
+    """Images with any number of drones each. Detections claim drones in score order, each taking the
+    unclaimed drone it overlaps most at IoU >= min_iou (COCO's greedy rule); the rest are false positives.
+    With one drone per image this is match_clip's rule."""
+    if len(frames) != len(truth):
+        raise ValueError(f"{len(frames)} images of detections, but {len(truth)} labeled")
+    drones, scores = [], []
+    for boxes, dets in zip(truth, frames):
+        scores += [d.score for d in dets]
+        found: list[float | None] = [None] * len(boxes)
+        for d in sorted(dets, key=lambda d: -d.score):
+            overlaps = [(iou(d.box, box), k) for k, box in enumerate(boxes) if found[k] is None]
+            best = max(overlaps, default=(0.0, -1))
+            if best[0] >= min_iou:
+                found[best[1]] = d.score
+        drones += [(_area(box), s) for box, s in zip(boxes, found)]
+    return Matches(drones, scores, [], 0.0)
+
+
+def drone_free_rate(frames: list[list[Detection]], threshold: float) -> dict:
+    """On images with no drone: the share where any detection scores at least `threshold`."""
+    with_alarm = sum(any(d.score >= threshold for d in dets) for dets in frames)
+    return {"threshold": threshold, "images": len(frames), "with_alarm": with_alarm,
+            "rate": _ratio(with_alarm, len(frames))}
+
+
+def load_yolo_labels(path: str | Path, width: int, height: int) -> list[Box]:
+    """A YOLO label file (class, center x, center y, width, height, all but the class as fractions of the
+    image) as pixel corners. Classes are ignored."""
+    boxes = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            cx, cy, w, h = (float(v) for v in line.split()[1:5])
+            boxes.append(((cx - w / 2) * width, (cy - h / 2) * height, (cx + w / 2) * width, (cy + h / 2) * height))
+    return boxes
 
 
 def merge(matches: Sequence[Matches]) -> Matches:
@@ -113,13 +163,58 @@ def at_threshold(m: Matches, threshold: float) -> dict:
 
 
 def evaluate(root: str | Path, split_file: str | Path, name: str, detections: str | Path,
-             threshold: float | None = None) -> dict:
-    """Score `detections/<clip>.jsonl` for every clip of split `name`."""
+             threshold: float | None = None, empty_sky: str | Path | None = None) -> dict:
+    """Score `detections/<clip>.jsonl` for every clip of split `name`.
+
+    With `empty_sky` (a tether-empty-sky list), false alarms count only on its frames for this split.
+    """
     split, detections = load_split(split_file), Path(detections)
     dump_info = detections / "dump.json"
     dump = json.loads(dump_info.read_text(encoding="utf-8")) if dump_info.exists() else {}
-    m = merge([match_clip(load_clip(d), load_detections(detections / f"{d.name}.jsonl"))
-               for d in clip_dirs(root, split, name)])
+    sky = load_empty_sky(empty_sky, name) if empty_sky is not None else None
+    dirs = clip_dirs(root, split, name)
+    if sky is not None and not {d.name for d in dirs} <= sky.keys():
+        # Most likely a list for another split, which would score no false alarms in no time.
+        raise ValueError(f"{empty_sky} lists no empty-sky frames for some {name} clips")
+    m = merge([match_clip(load_clip(d), load_detections(detections / f"{d.name}.jsonl"),
+                          sky=sky[d.name] if sky is not None else None) for d in dirs])
+    floor = dump.get("min_score")
+    return {"model": dump.get("model", detections.name), "detections": str(detections),
+            "split": {"file": str(split_file), "name": name, "seed": split["seed"]},
+            "clips": len(split["clips"][name]), "min_iou": MIN_IOU,
+            "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, "
+                          "every other detection is a false positive",
+            "empty_sky": str(empty_sky) if empty_sky is not None else None,
+            "min_score": floor, "ap50": ap50(m), "thresholds": _rows(m, threshold, floor)}
+
+
+def evaluate_images(detections: str | Path, labels: str | Path | None, threshold: float | None = None) -> dict:
+    """Score a tether-image-detect dump: against YOLO-format `labels`, or, with labels None, as drone-free
+    images (any detection is a false alarm)."""
+    detections = Path(detections)
+    dump = json.loads((detections / "dump.json").read_text(encoding="utf-8"))
+    frames = load_detections(detections / "detections.jsonl")
+    if len(frames) != len(dump["images"]):
+        raise ValueError(f"{detections}: {len(frames)} images of detections, but {len(dump['images'])} listed")
+    floor = dump["min_score"]
+    results = {"model": dump["model"], "detections": str(detections), "set": dump["set"],
+               "images": len(frames), "min_score": floor}
+    if labels is None:
+        rows = [drone_free_rate(frames, t) for t in (*([threshold] if threshold is not None else []), MIN_SCORE)]
+        _check_floor(rows, floor)
+        return {**results, "metric": "share of drone-free images with any detection at or above the threshold",
+                "thresholds": rows}
+    truth = [load_yolo_labels(Path(labels) / f"{Path(image).stem}.txt", w, h)
+             for image, (w, h) in zip(dump["images"], dump["sizes"])]
+    m = match_images(truth, frames)
+    return {**results, "labels": str(labels), "min_iou": MIN_IOU,
+            "match_rule": "class-agnostic; detections claim drones in score order, each the unclaimed drone it "
+                          "overlaps most at IoU >= min_iou; every other detection is a false positive",
+            "ap50": ap50(m), "thresholds": _rows(m, threshold, floor)}
+
+
+def _rows(m: Matches, threshold: float | None, floor: float | None) -> list[dict]:
+    """The given (or best-F1) threshold's row and the tracker's 0.25."""
     chosen_by = "given" if threshold is not None else "best F1 on this split"
     threshold = threshold if threshold is not None else best_f1_threshold(m)
     rows = [{**at_threshold(m, threshold), "chosen_by": chosen_by}] if threshold is not None else []
@@ -127,16 +222,18 @@ def evaluate(root: str | Path, split_file: str | Path, name: str, detections: st
     for row in rows:  # a best-F1 cut here may not be the real best: F1 can still rise below what was saved
         row["at_lowest_saved_score"] = (row["chosen_by"] == "best F1 on this split"
                                         and row["threshold"] - min(m.scores) < AT_FLOOR_MARGIN)
-    floor = dump.get("min_score")
+    _check_floor(rows, floor)
+    return rows
+
+
+def _check_floor(rows: list[dict], floor: float | None) -> None:
     if floor is not None and any(row["threshold"] < floor for row in rows):
         # Detections under the floor were never saved, so recall there would be understated.
         raise ValueError(f"thresholds {[row['threshold'] for row in rows]} go below the dump's floor {floor}")
-    return {"model": dump.get("model", detections.name), "detections": str(detections),
-            "split": {"file": str(split_file), "name": name, "seed": split["seed"]},
-            "clips": len(split["clips"][name]), "min_iou": MIN_IOU,
-            "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, "
-                          "every other detection is a false positive",
-            "min_score": floor, "ap50": ap50(m), "thresholds": rows}
+
+
+def _area(box: Box) -> float:
+    return (box[2] - box[0]) * (box[3] - box[1])
 
 
 def _found(hit_scores: list[float | None], threshold: float) -> int:
@@ -172,17 +269,60 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", default="val", choices=["train", "val", "test"], help="default val")
     parser.add_argument("--threshold", type=float,
                         help="score threshold to report (default: the best-F1 one on this split)")
+    parser.add_argument("--empty-sky", help="count false alarms only on this tether-empty-sky list's frames "
+                                            "(e.g. splits/antiuav-empty-sky.json)")
     parser.add_argument("--out", help="results file (default <detections>/results.json)")
     args = parser.parse_args(argv)
 
-    results = evaluate(args.antiuav, args.split_file, args.split, args.detections, args.threshold)
-    out = Path(args.out or Path(args.detections) / "results.json")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, "w", encoding="utf-8", newline="\n") as f:
-        f.write(json.dumps(results, indent=2) + "\n")
+    results = evaluate(args.antiuav, args.split_file, args.split, args.detections, args.threshold, args.empty_sky)
+    out = _save(results, args.out or Path(args.detections) / "results.json")
     print(_report(results))
     print(f"saved to {out}")
     return 0
+
+
+def main_images(argv: list[str] | None = None) -> int:
+    """tether-drone-score-images: the scorer's image-folder mode, on a tether-image-detect dump."""
+    parser = argparse.ArgumentParser(
+        prog="tether-drone-score-images",
+        description="Score a detector on a folder of images (a tether-image-detect dump), class-agnostically: "
+                    "against YOLO-format labels (AP50, recall, precision, F1, as tether-drone-score), or on "
+                    "drone-free images as the share with any detection at the threshold.")
+    parser.add_argument("detections", help="folder holding detections.jsonl and dump.json (from tether-image-detect)")
+    truth = parser.add_mutually_exclusive_group(required=True)
+    truth.add_argument("--labels", help="folder of YOLO-format <image stem>.txt label files")
+    truth.add_argument("--drone-free", action="store_true", help="the images hold no drone (e.g. bird images)")
+    parser.add_argument("--threshold", type=float,
+                        help="score threshold to report, e.g. frozen from val (default: the best-F1 one on these "
+                             "images; drone-free images then get only the tracker's 0.25)")
+    parser.add_argument("--out", help="results file (default <detections>/results.json)")
+    args = parser.parse_args(argv)
+
+    results = evaluate_images(args.detections, args.labels, args.threshold)
+    out = _save(results, args.out or Path(args.detections) / "results.json")
+    print(_report_images(results))
+    print(f"saved to {out}")
+    return 0
+
+
+def _report_images(results: dict) -> str:
+    lines = [f"{results['model']} on {results['set']} ({results['images']} images)"
+             + (f": AP50 {results['ap50']:.3f}" if results.get("ap50") is not None else "")]
+    for row in results["thresholds"]:
+        if "rate" in row:
+            lines.append(f"at {row['threshold']:.3f}: {row['with_alarm']} of {row['images']} images with a false alarm")
+        else:
+            lines.append(f"at {row['threshold']:.3f} ({row['chosen_by']}): {row['found']} of {row['drones']} drones "
+                         f"found, {row['detections']} detections")
+    return "\n".join(lines)
+
+
+def _save(results: dict, path: str | Path) -> Path:
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(results, indent=2) + "\n")
+    return out
 
 
 if __name__ == "__main__":

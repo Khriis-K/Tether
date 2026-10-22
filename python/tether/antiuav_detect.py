@@ -45,17 +45,17 @@ def dump_split(root: str | Path, split: dict, name: str, work_dir: str | Path, m
     clips = list(zip(split["clips"][name], clip_dirs(root, split, name)))
     for k, (clip, clip_dir) in enumerate(clips, 1):
         dets, expected = out / f"{clip_dir.name}.jsonl", split["frames"][clip]
-        if _frames(dets) == expected:
+        if dumped_frames(dets) == expected:
             continue
         print(f"[{k}/{len(clips)}] {clip}", flush=True)
         subprocess.run(f'{detector} --model "{model}" --det-min-score {min_score} '
                        f'--dump "{dets}" "{clip_dir / "visible.mp4"}"', shell=True, check=True)
-        if _frames(dets) != expected:
-            raise ValueError(f"{dets}: {_frames(dets)} frames, but {clip} has {expected}")
+        if dumped_frames(dets) != expected:
+            raise ValueError(f"{dets}: {dumped_frames(dets)} frames, but {clip} has {expected}")
     return out
 
 
-def _frames(path: Path) -> int | None:
+def dumped_frames(path: Path) -> int | None:
     """None for a missing file, or one a stopped run cut off mid-line."""
     try:
         return len(load_detections(path))
