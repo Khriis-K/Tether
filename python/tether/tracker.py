@@ -140,6 +140,11 @@ class _TrackState:
         )
 
 
+# Pairs tracks with detection boxes, given which pairs are allowed; returns (track, detection) indices.
+# Defined before Tracker: Python before 3.14 evaluates its method annotations at class creation.
+_Matcher = Callable[[list[_TrackState], list[Box], np.ndarray], list[tuple[int, int]]]
+
+
 class Tracker:
     def __init__(self, confirm_frames: int = CONFIRM_FRAMES,
                  max_missing_frames: int = MAX_MISSING_FRAMES,
@@ -287,10 +292,6 @@ class Tracker:
                             [detections[di].box for di in dis],
                             allowed[np.ix_(tis, dis)])
         return [(tis[a], dis[b]) for a, b in sub_pairs]
-
-
-# Pairs tracks with detection boxes, given which pairs are allowed; returns (track, detection) indices.
-_Matcher = Callable[[list[_TrackState], list[Box], np.ndarray], list[tuple[int, int]]]
 
 
 def _by_iou(min_iou: float = MIN_IOU) -> _Matcher:

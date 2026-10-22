@@ -278,6 +278,13 @@ Two separate choices. The **benchmark detection set** is what a tracker comparis
 
 **Gotcha:** "shipped" means the model, not a whole set of defaults. The runtime, prep and pipeline defaults stay ONNX Runtime, CPU and sequential, which run anywhere, and on them the 1280×736 model is 2.20–2.29× slower to detect than 640. The speed targets apply only to the opt-in GPU configuration.
 
+### GPU containers (NVIDIA Container Toolkit)
+A Docker container normally can't see the GPU. The NVIDIA Container Toolkit adds a runtime that, when you pass `docker run --gpus all`, mounts the host's GPU devices and driver libraries into the container. The container brings its own CUDA toolkit and TensorRT; only the **driver** comes from the host, so the host driver just has to be new enough for the container's CUDA version. NVIDIA publishes ready images (`nvcr.io/nvidia/tensorrt`) with CUDA, TensorRT and `trtexec` installed.
+
+**In Tether:** `docker/Dockerfile` builds on `nvcr.io/nvidia/tensorrt:26.09-py3` (TensorRT 11.3.0, CUDA 13.4.1), and `docker/benchmark.sh` runs the video-file benchmarks with one command (`docs/DOCKER.md`). On Windows, Docker Desktop's WSL 2 backend provides the toolkit.
+
+**Gotcha:** the GPU exists only at `docker run`, never during `docker build`. Anything that touches the GPU, like `trtexec` building the test engines, has to wait until the container runs. And a [TensorRT engine](#tensorrt-engine) built inside the container (TensorRT 11.3) won't load in the Windows build (11.4), or the other way round, so the container keeps its own models folder.
+
 ---
 
 ## Performance
@@ -479,6 +486,13 @@ Finding out what a piece of a system is worth by changing just that piece and me
 **In Tether:** the #22 ablations swapped one ByteTrack behaviour at a time into Tether (gate, Kalman filter, confirmation frames, assignment, matching order). Only matching order explained the gap. The ablations ran through a throwaway copy of the tracker that, with no flags, gives byte-identical output to the real one. That check proves the copy itself didn't change anything.
 
 **Gotcha:** pieces interact, so one-at-a-time results don't simply add up. All of #22's changes together scored worse than matching order alone (950 ID switches vs. 779). After you find the winner, re-run the others *on top of it*, as the #22 write-up does.
+
+### Deferred annotations (Python 3.14)
+Up to Python 3.13, the type annotations on a function are evaluated when the `def` runs, so every name in them must already exist. Python 3.14 (PEP 649) evaluates them lazily, only if something asks for them. So code that annotates with a name defined further down the file works on 3.14 and fails at import on anything older with a `NameError`.
+
+**In Tether:** `tracker.py` annotated a `Tracker` method with `_Matcher`, an alias defined below the class. The laptop runs 3.14, so all 324 tests passed; the Docker image's Python 3.12 couldn't import the tracker at all, though `pyproject.toml` promises 3.10+. The alias now sits above the class (#19).
+
+**Gotcha:** "the tests pass" only covers the interpreter they ran on. Running them in the image now covers 3.12 as well as the laptop's 3.14, but 3.10 and 3.11, which `pyproject.toml` also claims, are still untested.
 
 ### Tracer bullet / vertical slice
 Building a thin piece of functionality that works end to end, all the way through every layer, instead of finishing one layer at a time. You get something working early, and integration problems show up early.

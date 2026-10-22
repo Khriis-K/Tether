@@ -1,0 +1,9 @@
+.git
+.claude
+data
+models
+results
+cpp/build
+**/__pycache__
+*.egg-info
+.pytest_cache
