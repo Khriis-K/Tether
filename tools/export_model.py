@@ -56,23 +56,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> None:
+def export_onnx(weights: Path, size: tuple[int, int], target: Path, names: dict[int, str] | None = None) -> None:
+    """Export `weights` to ONNX at `size` (height, width) as `target`, optionally renaming its classes."""
     from ultralytics import YOLO  # imported here so the naming above is testable without Ultralytics
+
+    # Ultralytics writes <weights-stem>.onnx next to the weights, which for yolo26n.pt is
+    # models/yolo26n.onnx, the 640 model. Exporting a copy in a scratch folder keeps models/
+    # untouched until the move.
+    with tempfile.TemporaryDirectory() as scratch:
+        model = YOLO(str(shutil.copy(weights, scratch)))
+        if names is not None:
+            model.model.names = names  # written into the ONNX metadata
+        onnx_path = model.export(format="onnx", imgsz=list(size), batch=1, dynamic=False, nms=False, opset=18,
+                                 simplify=False)  # simplifying would pip-install onnxslim mid-export
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(onnx_path, target)
+
+
+def main(argv: list[str] | None = None) -> None:
     from ultralytics.utils.downloads import attempt_download_asset
 
     args = parse_args(argv)
     MODELS.mkdir(exist_ok=True)
     weights = Path(attempt_download_asset(MODELS / f"yolo26{args.model}.pt"))  # skipped if already there
     target = MODELS / output_name(args.model, args.size)
-    # Ultralytics writes <weights-stem>.onnx next to the weights, which for yolo26n.pt is
-    # models/yolo26n.onnx, the 640 model. Exporting a copy in a scratch folder keeps models/
-    # untouched until the move.
-    with tempfile.TemporaryDirectory() as scratch:
-        copy = Path(shutil.copy(weights, scratch))
-        onnx_path = YOLO(str(copy)).export(format="onnx", imgsz=list(args.size), batch=1, dynamic=False,
-                                           nms=False, opset=18,
-                                           simplify=False)  # simplifying would pip-install onnxslim mid-export
-        shutil.move(onnx_path, target)
+    export_onnx(weights, args.size, target)
     print(f"exported {target}")
 
 
