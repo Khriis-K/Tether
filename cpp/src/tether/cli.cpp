@@ -56,6 +56,11 @@ int run_track_cli(const std::vector<std::string>& args, std::ostream& out, std::
       {"--min-score",
        {"detections scored below this are ignored (default " + num(MIN_SCORE) + ")",
         [&](const std::string& v) { s.min_score = parse_double(v); }}},
+      {"--low-score-ratio",
+       {"detections scored above this times --min-score, and below it, can only keep a tracked track alive; the "
+        "band moves with the cutoff, and 1 turns it off (default " +
+            num(LOW_SCORE_RATIO) + ": 0.1 at the default cutoff)",
+        [&](const std::string& v) { s.low_score_ratio = parse_double(v); }}},
       {"--search-gate",
        {"center-distance gate, in track box sizes, for re-matching a searching track; this and "
         "--search-gate-growth both 0 turns it off (default " +

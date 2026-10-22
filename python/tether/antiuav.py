@@ -1,4 +1,4 @@
-"""tether-antiuav: stress-test ID keeping on Anti-UAV300 drone clips, without a detector.
+"""tether-antiuav: stress-test ID keeping on Anti-UAV300 drone clips, on labeled boxes or a detector's output.
 
 The labeled drone boxes of each visible-light clip are turned into a detection
 file with failures added on purpose, the tracker command is run on it, and its
@@ -17,8 +17,19 @@ A track holds the drone on a frame only if it is "tracked" and its box overlaps
 the labeled box with IoU of at least MIN_IOU. Without the IoU rule, a track that
 never dies would score 100% on single-drone clips. Results are saved as JSON.
 
+With --detections, the tracker runs on a real detector's output instead: a
+folder of detection files from tether-antiuav-detect, with its dump.json. The
+clips are that split's, read from the split file (tether-antiuav-split). The
+detector's own misses are the dropout, so nothing is deleted on top, and every
+frame with a labeled drone is scored as "ID kept": a frame the detector missed
+counts against it, so a detector that finds nothing scores 0. Classes are
+ignored, every detection being handed over as a drone, as tether-drone-score
+counts them. The same clips are also run on their labeled boxes, the ceiling
+the detector's row is read against.
+
 The tracker is any command called as `<command> DETECTIONS TRACKS`, as for
-tether-mot17. Its own settings (like how long a track may search) stay its own.
+tether-mot17. Its own settings (like how long a track may search, or its score
+cutoff) stay its own.
 """
 
 import argparse
@@ -35,7 +46,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from tether.formats import Box, Detection, Track, load_tracks, save_detections
+from tether.antiuav_split import DEFAULT_SPLIT_FILE, clip_dirs, load_split
+from tether.formats import Box, Detection, Track, load_detections, load_tracks, save_detections
 from tether.matching import iou
 
 DEFAULT_WORK_DIR = Path("results/antiuav")
@@ -177,16 +189,8 @@ def evaluate(dataset_dir: str | Path, work_dir: str | Path, tracker_cmd: str, na
         raise FileNotFoundError(f"no clips in {Path(dataset_dir) / split}")
 
     def run(condition: str, clip: Clip, given: list[Box | None]) -> list[list[Track]]:
-        dets = work_dir / "detections" / condition / f"{clip.name}.jsonl"
-        tracks = out_dir / condition / f"{clip.name}.jsonl"
-        for d in (dets.parent, tracks.parent):
-            d.mkdir(parents=True, exist_ok=True)
-        save_detections(dets, to_detections(given))
-        subprocess.run(f'{tracker_cmd} "{dets}" "{tracks}"', shell=True, check=True)
-        frames = load_tracks(tracks)
-        if len(frames) != len(given):
-            raise ValueError(f"{tracks}: {len(frames)} frames, but {dets} has {len(given)}")
-        return frames
+        return _track(tracker_cmd, work_dir / "detections" / condition / f"{clip.name}.jsonl",
+                      out_dir / condition / f"{clip.name}.jsonl", to_detections(given))
 
     deletion = []
     for rate in drop_rates:
@@ -218,11 +222,80 @@ def evaluate(dataset_dir: str | Path, work_dir: str | Path, tracker_cmd: str, na
 
     results = {"tracker": name, "split": split, "clips": len(clips), "seed": seed,
                "random_deletion": deletion, "gaps": gap_results}
-    results_file = out_dir / "results.json"
+    _save_results(out_dir / "results.json", results)
+    return results
+
+
+def evaluate_detections(dirs: Sequence[str | Path], detections_dir: str | Path, work_dir: str | Path,
+                        tracker_cmd: str, name: str) -> dict:
+    """Score the tracker on a detector's output, beside the same clips' labeled boxes.
+
+    Saves to `work_dir/trackers/<name>/<model>-<split>/results.json`, the model and
+    split being the ones in the folder's dump.json.
+    """
+    detections_dir, work_dir = Path(detections_dir), Path(work_dir)
+    dump = _read_dump(detections_dir)
+    condition = f"{dump['model']}-{dump['split']}"
+    out_dir = work_dir / "trackers" / name / condition
+    clips = [load_clip(d) for d in dirs]
+    if not clips:
+        raise FileNotFoundError(f"no clips to score {detections_dir} on")
+    found = []
+    for clip in clips:
+        frames = load_detections(detections_dir / f"{clip.name}.jsonl")
+        if len(frames) != len(clip.boxes):
+            raise ValueError(f"{detections_dir / clip.name}.jsonl: {len(frames)} frames, "
+                             f"but {clip.name} has {len(clip.boxes)}")
+        found.append([[Detection(box=d.box, score=d.score, cls=DRONE) for d in dets] for dets in frames])
+
+    def run(kind: str, clip: Clip, given: list[list[Detection]]) -> dict:
+        frames = _track(tracker_cmd, work_dir / "detections" / kind / f"{clip.name}.jsonl",
+                        out_dir / kind / f"{clip.name}.jsonl", given)
+        return id_kept(clip.boxes, clip.boxes, frames)  # every labeled frame is scored
+
+    per_clip = []
+    for clip, dets in zip(clips, found):
+        print(f"{clip.name}", flush=True)
+        detector = run(condition, clip, dets)
+        per_clip.append({"clip": clip.name, "frames": detector["frames"], "detector": detector,
+                         "labeled_boxes": run("labeled-boxes", clip, to_detections(clip.boxes))})
+
+    def total(kind: str) -> dict:
+        kept, frames = (sum(c[kind][key] for c in per_clip) for key in ("kept", "frames"))
+        return {"kept": kept, "frames": frames, "id_kept": _percent(kept, frames)}
+
+    results = {"tracker": name, "tracker_command": tracker_cmd, "model": dump["model"],
+               "det_min_score": dump["min_score"], "split": dump["split"], "clips": len(clips),
+               "detector": total("detector"), "labeled_boxes": total("labeled_boxes"), "per_clip": per_clip}
+    _save_results(out_dir / "results.json", results)
+    return results
+
+
+def _track(tracker_cmd: str, dets: Path, tracks: Path, given: list[list[Detection]]) -> list[list[Track]]:
+    """Save `given` to `dets`, run the tracker command from it to `tracks`, and read the tracks back."""
+    for d in (dets.parent, tracks.parent):
+        d.mkdir(parents=True, exist_ok=True)
+    save_detections(dets, given)
+    subprocess.run(f'{tracker_cmd} "{dets}" "{tracks}"', shell=True, check=True)
+    frames = load_tracks(tracks)
+    if len(frames) != len(given):
+        raise ValueError(f"{tracks}: {len(frames)} frames, but {dets} has {len(given)}")
+    return frames
+
+
+def _save_results(results_file: Path, results: dict) -> None:
     results_file.parent.mkdir(parents=True, exist_ok=True)
     results_file.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     print(f"saved to {results_file}")
-    return results
+
+
+def _read_dump(detections_dir: Path) -> dict:
+    """The dump.json tether-antiuav-detect leaves beside its files: the model, score floor and split."""
+    info_file = detections_dir / "dump.json"
+    if not info_file.exists():
+        raise FileNotFoundError(f"{info_file} not found: the folder must come from tether-antiuav-detect, "
+                                "which records the model it was dumped with")
+    return json.loads(info_file.read_text(encoding="utf-8"))
 
 
 def _corners(rect: list[float]) -> Box:
@@ -254,12 +327,26 @@ def _report(results: dict) -> str:
     return "\n".join(lines)
 
 
+def _report_detections(results: dict) -> str:
+    return "\n".join(f"{label}: ID kept {results[key]['id_kept']:.1f}% of {results[key]['frames']} frames"
+                     for label, key in ((f"{results['model']} detections", "detector"),
+                                        ("labeled boxes", "labeled_boxes")))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tether-antiuav", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("antiuav", help="the unzipped Anti-UAV300 folder (the one holding train/, val/, test/)")
-    parser.add_argument("--split", default="test", choices=["train", "val", "test"],
-                        help="clips to score (default test; keep it unseen if you tune on train or val)")
+    parser.add_argument("--split", choices=["train", "val", "test"],
+                        help="clips to score (default test, or with --detections the split they were dumped "
+                             "for; keep test unseen if you tune on train or val)")
+    parser.add_argument("--detections",
+                        help="score the tracker on this folder of detections from tether-antiuav-detect, "
+                             "beside the same clips' labeled boxes, instead of deleting labeled boxes "
+                             "(--drop-rates, --gap-seconds and --seed then don't apply)")
+    parser.add_argument("--split-file", default=str(DEFAULT_SPLIT_FILE),
+                        help=f"with --detections, the split file naming each split's clips "
+                             f"(default {DEFAULT_SPLIT_FILE})")
     parser.add_argument("--drop-rates", type=float, nargs="*", default=list(DROP_RATES),
                         help="share of boxes deleted at random, one run each (default 0 0.2; "
                              "0 is the baseline: IDs lost with nothing deleted)")
@@ -273,7 +360,15 @@ def main(argv: list[str] | None = None) -> int:
                         help=f"where detections, tracks and results go (default {DEFAULT_WORK_DIR})")
     args = parser.parse_args(argv)
 
-    results = evaluate(args.antiuav, args.work_dir, args.tracker, args.name, split=args.split,
+    if args.detections:
+        split = _read_dump(Path(args.detections))["split"]
+        if args.split not in (None, split):
+            raise ValueError(f"{args.detections} was dumped for {split}, not {args.split}")
+        results = evaluate_detections(clip_dirs(args.antiuav, load_split(args.split_file), split),
+                                      args.detections, args.work_dir, args.tracker, args.name)
+        print(_report_detections(results))
+        return 0
+    results = evaluate(args.antiuav, args.work_dir, args.tracker, args.name, split=args.split or "test",
                        drop_rates=args.drop_rates, gap_seconds=args.gap_seconds, seed=args.seed)
     print(_report(results))
     return 0

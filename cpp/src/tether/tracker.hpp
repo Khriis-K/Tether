@@ -16,7 +16,7 @@ inline constexpr int PATH_LENGTH = 30;          // box centers kept per track fo
 inline constexpr int CONFIRM_FRAMES = 3;        // matched frames in a row before a new track is confirmed
 inline constexpr int MAX_MISSING_FRAMES = 30;   // missed frames in a row a confirmed track survives
 inline constexpr double MIN_SCORE = 0.25;       // lowest detector confidence the tracker uses
-inline constexpr double LOW_SCORE = 0.1;        // low detections score above this and below min_score
+inline constexpr double LOW_SCORE_RATIO = 0.4;  // low detections score above this times min_score: 0.1 at 0.25
 inline constexpr double LOW_MIN_IOU = 0.5;      // pairs with a low detection that overlap less never match
 inline constexpr double SEARCH_GATE = 1.5;      // after one missed frame the gate is this + growth
 inline constexpr double SEARCH_GATE_GROWTH = 0.25;
@@ -30,6 +30,7 @@ struct TrackerSettings {
   int confirm_frames = CONFIRM_FRAMES;
   int max_missing_frames = MAX_MISSING_FRAMES;
   double min_score = MIN_SCORE;
+  double low_score_ratio = LOW_SCORE_RATIO;  // the low band's floor moves with min_score
   double search_gate = SEARCH_GATE;  // this and search_gate_growth both 0 turns the gate off
   double search_gate_growth = SEARCH_GATE_GROWTH;
   double search_gate_cap = SEARCH_GATE_CAP;  // infinity is no cap

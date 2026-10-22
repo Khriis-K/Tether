@@ -266,6 +266,7 @@ if(TETHER_BUILD_TESTS)
     tests/test_lifecycle.cpp
     tests/test_live_stats.cpp
     tests/test_low_score.cpp
+    tests/test_low_score_band.cpp
     tests/test_matching.cpp
     tests/test_merge.cpp
     tests/test_panel.cpp
