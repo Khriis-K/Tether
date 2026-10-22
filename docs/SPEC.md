@@ -108,6 +108,15 @@ It is built in two passes: a Python prototype to get the tracking logic right, t
 57. As a recruiter or reviewer, I want a README with the demo video, the benchmark tables, and how to run it, so that I can understand the project in a few minutes.
 58. As an open-source user, I want a clear license, so that I know how I can use the code.
 
+### Drone detector (stage 5)
+
+59. As a developer, I want a val split made of whole recording sessions, so that the detector is never tuned on near-copies of its own training footage.
+60. As a developer, I want to score any detector on Anti-UAV clips (AP50, recall, precision and F1 at a threshold, recall by box size, false alarms per minute on drone-absent frames), so that I can compare the pretrained model and the fine-tuned one on the same footing.
+61. As a developer, I want a single-class drone model fine-tuned on Anti-UAV, used by any tool through `--model`, so that Tether finds drones itself while the COCO model and every MOT17 result stay as they are.
+62. As a developer, I want the tracker scored on the drone model's own detections, next to the labeled-box ceiling, so that I can see what a real detector costs.
+63. As a developer, I want the detector scored on a dataset it never trained on, and on images with birds and no drones, so that I know whether it generalizes and how often it calls something else a drone.
+64. As a viewer, I want the HUD and stats panel to show the drone model's class name, so that a drone isn't labeled "person".
+
 ## Implementation Decisions
 
 ### Stages
@@ -116,7 +125,8 @@ It is built in two passes: a Python prototype to get the tracking logic right, t
 - **Stage 2: C++ version.** Same tracker logic, matching outputs, sequential pipeline first, then parallel stages.
 - **Stage 3: Benchmarks.** MOT17 vs. ByteTrack, Anti-UAV dropout tests, Python vs. C++ timing.
 - **Stage 4: GPU speed.** Profiling, TensorRT, custom CUDA frame prep.
-- Stages 1–4 are "done for the resume." Stages 5 (drone detector) and 6 (Android) are later upgrades.
+- **Stage 5: Drone detector.** A single-class YOLO26n drone model fine-tuned on Anti-UAV and scored end to end, on a session-disjoint val, with a transfer test and false-alarm rates. See `docs/adr/0004-drone-detector-on-anti-uav.md` (milestone "Drone detection", #41–#48).
+- Stages 1–4 are "done for the resume." Stage 5 builds on them. Stage 6 (Android) is a later upgrade.
 
 ### Modules
 
@@ -200,6 +210,12 @@ All speed targets are for the final C++ version running the shipped configuratio
 - With gaps up to 1 second (converted to frames using the clip's frame rate): same ID recovered at least 80% of the time.
 - Prediction error during gaps: reported as a result, not pass/fail.
 
+**Drone detector** (stage 5, ADR 0004)
+- Speed: the drone model in the shipped configuration meets the speed targets above (120+ FPS, P99 under 16 ms) on the Anti-UAV clip.
+- Accuracy targets are set from val results before test is run (#47), each with a reason other than the val score itself. Until then, every number is reported against two references: the pretrained COCO YOLO26n scored class-agnostically (the "before" row), and the labeled-box tracking results (the ceiling).
+- Scoring: a detection is a hit at IoU ≥ 0.5 with the labeled box. Models are compared on AP50. Recall, precision and F1 are reported at the threshold with the best F1 on the session-disjoint val, frozen before test.
+- Reported, not pass/fail unless #47 says otherwise: transfer to Seraphim test (Anti-UAV frames removed), the share of Drone-vs-Bird bird images with a false drone, and false alarms per minute on Anti-UAV frames with no drone.
+
 **Upgrade payoffs**
 - Tracking step, C++ vs. Python: 10x+ faster.
 - Whole pipeline, C++ vs. Python: 2x+ faster.
@@ -210,14 +226,15 @@ All speed targets are for the final C++ version running the shipped configuratio
 
 ## Out of Scope
 
-- **Training a drone detector** (stage 5, later). Datasets are already confirmed (Seraphim, UETT4K Anti-UAV, Drone vs. Bird). Anti-UAV is tested in stages 1–4 using its labeled boxes instead.
 - **Android app** (stage 6, later). The C++ core and ONNX model are chosen so this port is straightforward.
-- **NVIDIA Jetson deployment** (possible later upgrade).
-- **Training or fine-tuning any model** in stages 1–4.
+- **NVIDIA Jetson deployment** (possible later upgrade, a candidate for a later drone milestone).
+- **Training or fine-tuning any model** in stages 1–4. Stage 5 fine-tunes only the drone detector (ADR 0004).
+- **Training the drone detector on anything but Anti-UAV.** Seraphim is held out as the transfer test. Training on it is the next experiment if the transfer score is poor.
+- **Bearing output and a low-latency mode** (candidates for a later drone milestone).
 - **Running the tracker itself on the GPU.**
 - **Custom GPU duplicate-box removal (NMS)**, not needed since YOLO26 has no NMS step.
 - **Re-identifying the same object across different cameras.**
-- **Thermal or infrared video.**
+- **Thermal or infrared video** (a candidate for a later drone milestone; the local Anti-UAV300 copy is visible light only).
 - **Click-to-select single-target tracking.** Detection is automatic.
 - **Live webcam inside Docker.** Docker is for video-file benchmarks only.
 

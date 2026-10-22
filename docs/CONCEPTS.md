@@ -213,6 +213,27 @@ The size of change you get from things that shouldn't matter. A difference betwe
 ### Train/test leakage
 Scoring a model on data it was trained on. The numbers look great and mean nothing, like grading a student on the exact homework they studied. Published MOT17 trackers often use detectors trained on MOT17's train videos. Tether evaluates *on* those videos, so it can't use such a detector without a held-out split.
 
+### Session-level leakage (splitting video datasets)
+[Train/test leakage](#traintest-leakage) that hides in how video gets split. When one long recording is cut into clips and the clips are dealt out to train and val, the val clips are the minutes just before and after footage the model trained on: same scene, same target, same light. Val scores come out high and say nothing about new footage. The fix is to split by recording session, so all of a session's clips land on the same side.
+
+**In Tether:** Anti-UAV300's official val does this. All 26 of its recording sessions also appear in train, and train clip `20190925_101846_1_3` ends on the same second (10:20:47) that val clip `1_4` starts. So the drone detector is tuned on a new val made of whole held-out sessions, and test, which shares no session with either, is run once at the end ([ADR 0004](adr/0004-drone-detector-on-anti-uav.md)).
+
+**Gotcha:** clip names that look independent can hide it. Check what a clip name encodes (here, the recording timestamp) and compare frames across the cut. The earlier tracker work used this val without harm, because the tracker ran on labeled boxes and learned nothing from pixels.
+
+### Transfer test (out-of-distribution evaluation)
+Scoring a model, untouched, on a dataset from a different source than the one it trained on. A held-out test split only shows the model works on more footage *like* its training data. A transfer test asks whether it works elsewhere, and the gap between the two scores measures how far it generalizes.
+
+**In Tether:** all of Anti-UAV300 comes from two days and one camera, so Anti-UAV test can't show the drone detector works anywhere else. Seraphim's test split, never trained on, is the transfer test. Anti-UAV frames are scanned for (by the turret's overlay) and dropped first, since Seraphim merges 23 sources and can't rule them out (ADR 0004).
+
+**Gotcha:** a transfer test only counts if nothing about it was tuned. Train on the second dataset and its test becomes in-distribution, possibly leaky. That's why Seraphim stays out of training even though it would probably make a better detector.
+
+### AP50 (average precision at IoU 0.5)
+A detector score over every confidence threshold. Sort the detections by confidence, trace precision against recall as the threshold drops, and take the area under that curve. A detection is a hit at IoU ≥ 0.5 with a labeled box. One threshold-free number like this is good for comparing models; recall and precision are then reported at the one threshold you actually run.
+
+**In Tether:** the drone models are compared on AP50 (#42), and the operating threshold is the one with the best F1 on val, frozen before test.
+
+**Gotcha:** recall alone fails the [null-case test](#null-case-test): a detector that boxes everything gets perfect recall. AP50 doesn't, since a model that outputs nothing, or the same box every frame, scores about 0.
+
 ---
 
 ## Detection & runtimes
@@ -277,6 +298,13 @@ The image size the model actually sees. A 1920×1080 frame is shrunk to fit the 
 Two separate choices. The **benchmark detection set** is what a tracker comparison runs on: detections are dumped to a file once, so it can come from a slow, strong detector, and it should, so the trackers get enough signal to be compared. The **shipped detector** is what runs live, so it has to be fast. Tether benchmarked on YOLO26n at 1280×736 while it shipped YOLO26n at 640 (ADR 0002). Once #18 measured both on TensorRT and #17 moved frame prep to the GPU, the 1280×736 model shipped too (ADR 0003: 195.45–195.86 FPS on the Anti-UAV clip). The two are now the same model, and MOT17 still reports 640 as a second row.
 
 **Gotcha:** "shipped" means the model, not a whole set of defaults. The runtime, prep and pipeline defaults stay ONNX Runtime, CPU and sequential, which run anywhere, and on them the 1280×736 model is 2.20–2.29× slower to detect than 640. The speed targets apply only to the opt-in GPU configuration.
+
+### Fine-tuning
+Starting from a model already trained on a big general dataset and training it a little further on your own data, instead of training from scratch. It keeps what the model already knows about edges, shapes and objects, so a few thousand frames can be enough.
+
+**In Tether:** the drone detector is YOLO26n, pretrained on COCO, fine-tuned on Anti-UAV with a single class, "drone" (ADR 0004). It's a separate model beside the COCO one, picked with `--model`.
+
+**Gotcha:** fine-tuning on new classes alone makes the model forget its old ones ("catastrophic forgetting"). That's why the drone model doesn't replace the COCO model: keeping people *and* drones in one model would mean mixing COCO images back into training and re-running every MOT17 number.
 
 ### GPU containers (NVIDIA Container Toolkit)
 A Docker container normally can't see the GPU. The NVIDIA Container Toolkit adds a runtime that, when you pass `docker run --gpus all`, mounts the host's GPU devices and driver libraries into the container. The container brings its own CUDA toolkit and TensorRT; only the **driver** comes from the host, so the host driver just has to be new enough for the container's CUDA version. NVIDIA publishes ready images (`nvcr.io/nvidia/tensorrt`) with CUDA, TensorRT and `trtexec` installed.
