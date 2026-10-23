@@ -1,7 +1,6 @@
 #include "tether/panel.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cstdio>
 
 #include "tether/hud.hpp"
@@ -10,22 +9,6 @@
 namespace tether {
 
 namespace {
-
-constexpr std::array<const char*, 80> COCO = {
-    "person",        "bicycle",      "car",           "motorcycle",    "airplane",     "bus",
-    "train",         "truck",        "boat",          "traffic light", "fire hydrant", "stop sign",
-    "parking meter", "bench",        "bird",          "cat",           "dog",          "horse",
-    "sheep",         "cow",          "elephant",      "bear",          "zebra",        "giraffe",
-    "backpack",      "umbrella",     "handbag",       "tie",           "suitcase",     "frisbee",
-    "skis",          "snowboard",    "sports ball",   "kite",          "baseball bat", "baseball glove",
-    "skateboard",    "surfboard",    "tennis racket", "bottle",        "wine glass",   "cup",
-    "fork",          "knife",        "spoon",         "bowl",          "banana",       "apple",
-    "sandwich",      "orange",       "broccoli",      "carrot",        "hot dog",      "pizza",
-    "donut",         "cake",         "chair",         "couch",         "potted plant", "bed",
-    "dining table",  "toilet",       "tv",            "laptop",        "mouse",        "remote",
-    "keyboard",      "cell phone",   "microwave",     "oven",          "toaster",      "sink",
-    "refrigerator",  "book",         "clock",         "vase",          "scissors",     "teddy bear",
-    "hair drier",    "toothbrush"};
 
 constexpr const char* STEP_NAMES[] = {"capture", "prep", "detect", "track", "draw"};
 
@@ -110,8 +93,8 @@ void draw_timing(const PanelFonts& fonts, const std::optional<LiveSummary>& stat
 }
 
 // Fills the height left, less `keep` for what comes after; scrolls when there are more.
-void draw_tracks(const PanelFonts& fonts, const std::vector<Track>& tracks, float keep) {
-  auto rows = track_rows(tracks);
+void draw_tracks(const PanelFonts& fonts, const std::vector<Track>& tracks, const ClassNames& names, float keep) {
+  auto rows = track_rows(tracks, names);
   char title[32];
   std::snprintf(title, sizeof title, "TRACKS (%zu)", rows.size());
   heading(fonts, title);
@@ -149,17 +132,17 @@ void draw_settings(const PanelFonts& fonts, const Settings& settings) {
 
 }  // namespace
 
-std::string class_name(int cls) {
-  if (cls >= 0 && cls < static_cast<int>(COCO.size())) return COCO[cls];
+std::string class_name(int cls, const ClassNames& names) {
+  if (cls >= 0 && cls < static_cast<int>(names.size())) return names[cls];
   return "class " + std::to_string(cls);
 }
 
-std::vector<TrackRow> track_rows(const std::vector<Track>& tracks) {
+std::vector<TrackRow> track_rows(const std::vector<Track>& tracks, const ClassNames& names) {
   std::vector<TrackRow> rows;
   for (const auto& t : tracks) {
-    if (t.status == "tracked") rows.push_back({t.id, class_name(t.cls), "tracked", false});
+    if (t.status == "tracked") rows.push_back({t.id, class_name(t.cls, names), "tracked", false});
     if (t.status == "searching")
-      rows.push_back({t.id, class_name(t.cls), "missing " + std::to_string(t.frames_since_seen), true});
+      rows.push_back({t.id, class_name(t.cls, names), "missing " + std::to_string(t.frames_since_seen), true});
   }
   std::sort(rows.begin(), rows.end(), [](const TrackRow& a, const TrackRow& b) { return a.id < b.id; });
   return rows;
@@ -209,7 +192,7 @@ void draw_panel(const PanelData& data, const PanelFonts& fonts, ImVec2 pos, ImVe
   // The settings' heading and rows, so the track list leaves room for them.
   float settings_h = (static_cast<float>(data.settings.size()) + 2) * ImGui::GetTextLineHeightWithSpacing() +
                      2 * ImGui::GetStyle().ItemSpacing.y;
-  draw_tracks(fonts, data.tracks, settings_h);
+  draw_tracks(fonts, data.tracks, data.class_names, settings_h);
   draw_settings(fonts, data.settings);
   ImGui::PopFont();
   ImGui::End();

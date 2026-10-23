@@ -109,7 +109,7 @@ class FakeRuns:
         self.logs = logs
         self.calls = []
 
-    def run(self, cpp_dir, video, model, mode, log, max_frames):
+    def run(self, cpp_dir, video, model, mode, log, max_frames, prep="cpu"):
         self.calls.append((model, video, mode, max_frames))
         save_timings(log, self.logs[model])
 

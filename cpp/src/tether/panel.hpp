@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "tether/class_names.hpp"
 #include "tether/formats.hpp"
 #include "tether/live_stats.hpp"
 
@@ -30,6 +31,7 @@ struct PanelData {
   std::optional<LiveSummary> stats;  // empty until the first frame has been timed
   std::vector<Track> tracks;
   Settings settings;
+  ClassNames class_names = coco_names();  // what each track's class is called
 };
 
 struct TrackRow {
@@ -45,10 +47,10 @@ struct StepBar {
   double share;  // of all steps' means together, 0-1
 };
 
-// The COCO name of a YOLO26 class ID; "class N" for any other ID.
-std::string class_name(int cls);
+// The name of class ID `cls` in `names`; "class N" for an ID it doesn't have.
+std::string class_name(int cls, const ClassNames& names = coco_names());
 // Tracked and searching tracks, by ID. Tentative tracks are left out, as on the video.
-std::vector<TrackRow> track_rows(const std::vector<Track>& tracks);
+std::vector<TrackRow> track_rows(const std::vector<Track>& tracks, const ClassNames& names = coco_names());
 std::vector<StepBar> step_bars(const LiveSummary& stats);
 std::string format_ms(double ms);  // "12.3 ms"
 

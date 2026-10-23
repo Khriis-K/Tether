@@ -1,11 +1,12 @@
-"""Where a COCO detector finds the drone: recall by recording session, and the class it named.
+"""Where a detector finds the drone: recall by recording session, and the class it named.
 
     python tools/drone_breakdown.py data/Anti-UAV300 results/antiuav/detections/yolo26n_1280x736/val
 
 For the class-agnostic COCO baseline (#42): per session of the split, the share
 of drone frames found at the threshold (the spread shows how much a val of few
-sessions can move), and for each found drone the COCO class of the detection
-that found it (its best-scored hit at IoU >= 0.5, as tether-drone-score counts it).
+sessions can move), and for each found drone the class of the detection that
+found it (its best-scored hit at IoU >= 0.5, as tether-drone-score counts it),
+named from the model's metadata (#46), so class 0 is "drone" for the drone model.
 """
 
 import argparse
@@ -15,22 +16,27 @@ from pathlib import Path
 
 from tether.antiuav import MIN_IOU, Clip, load_clip
 from tether.antiuav_split import DEFAULT_SPLIT_FILE, clip_dirs, load_split, session_of
+from tether.class_names import COCO_NAMES, class_name, class_names_for, parse_names_flag
 from tether.formats import Detection, load_detections
 from tether.matching import iou
 from tether.tracker import MIN_SCORE
 
-COCO = ("person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-        "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-        "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-        "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-        "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-        "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-        "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard",
-        "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
-        "scissors", "teddy bear", "hair drier", "toothbrush")
+def dump_class_names(detections: Path, flag: str | None) -> tuple[str, ...]:
+    """The flag's names, else those of the model the folder's dump.json names, else COCO's (no dump.json)."""
+    if flag is not None:
+        return parse_names_flag(flag)
+    dump = Path(detections) / "dump.json"
+    if not dump.exists():
+        return COCO_NAMES
+    model = json.loads(dump.read_text(encoding="utf-8"))["model_path"]
+    if not Path(model).exists():
+        raise SystemExit(f"drone_breakdown: error: {model} (from {dump}) isn't there to read class names from; "
+                         "pass --class-names")
+    return class_names_for(model, None)
 
 
-def breakdown(clips: list[tuple[Clip, list[list[Detection]]]], threshold: float) -> dict:
+def breakdown(clips: list[tuple[Clip, list[list[Detection]]]], threshold: float,
+              names: tuple[str, ...] = COCO_NAMES) -> dict:
     sessions: dict[str, list[int]] = {}  # session -> [found, drone frames]
     classes = Counter()
     for clip, frames in clips:
@@ -43,7 +49,7 @@ def breakdown(clips: list[tuple[Clip, list[list[Detection]]]], threshold: float)
             best = max(hits, key=lambda d: d.score, default=None)
             if best is not None and best.score >= threshold:
                 counts[0] += 1
-                classes[COCO[best.cls]] += 1
+                classes[class_name(best.cls, names)] += 1
     return {"threshold": threshold,
             "by_session": {s: {"found": f, "drones": n, "recall": f / n if n else None}
                            for s, (f, n) in sorted(sessions.items())},
@@ -58,13 +64,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", default="val", choices=["train", "val", "test"], help="default val")
     parser.add_argument("--thresholds", type=float, nargs="*", default=[0.1, MIN_SCORE],
                         help=f"default 0.1 {MIN_SCORE}")
+    parser.add_argument("--class-names", metavar="NAMES",
+                        help="comma-separated names for class IDs 0, 1, ... (default: the metadata of the model "
+                             "dump.json names, else COCO's)")
     parser.add_argument("--out", help="results file (default <detections>/breakdown.json)")
     args = parser.parse_args(argv)
 
     detections = Path(args.detections)
     clips = [(load_clip(d), load_detections(detections / f"{d.name}.jsonl"))
              for d in clip_dirs(args.antiuav, load_split(args.split_file), args.split)]
-    results = [breakdown(clips, t) for t in args.thresholds]
+    names = dump_class_names(detections, args.class_names)
+    results = [breakdown(clips, t, names) for t in args.thresholds]
     out = Path(args.out or detections / "breakdown.json")
     with open(out, "w", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(results, indent=2) + "\n")

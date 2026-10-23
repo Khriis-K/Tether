@@ -192,6 +192,7 @@ target_link_libraries(tether_core PRIVATE nlohmann_json::nlohmann_json)
 
 # The pipeline: video source, frame prep, detector and the sequential loop.
 add_library(tether_pipeline
+  src/tether/class_names.cpp
   src/tether/detector.cpp
   src/tether/frame_prep.cpp
   src/tether/gui_screen.cpp
@@ -254,6 +255,7 @@ if(TETHER_BUILD_TESTS)
   add_executable(tether_tests
     tests/test_assignment.cpp
     tests/test_bounded_queue.cpp
+    tests/test_class_names.cpp
     tests/test_cli.cpp
     tests/test_coast_damping.cpp
     tests/test_detector.cpp

@@ -15,6 +15,7 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "tether/class_names.hpp"
 #include "tether/detector.hpp"
 #include "tether/formats.hpp"
 #include "tether/frame_prep.hpp"
@@ -47,7 +48,7 @@ class InterruptGuard {
 
 struct Options {
   std::string source;
-  std::optional<std::string> model, dump, timing, record, screenshot;
+  std::optional<std::string> model, class_names, dump, timing, record, screenshot;
   bool show = false;
   PipelineMode pipeline = PipelineMode::sequential;
   Runtime runtime = Runtime::onnxruntime;
@@ -137,6 +138,13 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
                           model_for_size(v);  // throws on anything but n, s or m
                           o.model_size = v;
                         }}},
+      {"--class-names", {"NAMES", "the stats panel's names for class IDs 0, 1, ..., comma-separated (e.g. drone); "
+                                  "default: the model's ONNX metadata, else COCO's names. Needed for a TensorRT engine "
+                                  "with no .onnx beside it",
+                         [&](const std::string& v) {
+                           parse_names_flag(v);  // throws on an empty name
+                           o.class_names = v;
+                         }}},
       {"--dump", {"DETECTIONS", "write a detection file (.jsonl) instead of tracking",
                   [&](const std::string& v) { o.dump = v; }}},
       {"--det-min-score", {"SCORE", "lowest detector score kept; the tracker then applies its own threshold "
@@ -294,8 +302,17 @@ int run_pipeline_cli(const std::vector<std::string>& args, std::ostream& out, st
     LiveStats stats;
     std::vector<Track> on_screen;
     std::unique_ptr<GuiScreen> screen;
-    if (o.show)
-      screen = std::make_unique<GuiScreen>("Tether", [&] { return PanelData{stats.summary(), on_screen, run_settings(model, o.pipeline, o.runtime, o.cuda_graph, o.prep)}; });
+    if (o.show) {
+      ClassNames names = class_names_for(model, o.class_names);
+      if (!o.class_names && (model.extension() != ".onnx" || !std::filesystem::exists(model)))
+        err << "tether-pipeline: " << model.string() << " isn't an .onnx file to read class names from, so the "
+            << "panel uses COCO's; "
+            << "pass --class-names to name them\n";
+      screen = std::make_unique<GuiScreen>("Tether", [&, names] {
+        return PanelData{stats.summary(), on_screen, run_settings(model, o.pipeline, o.runtime, o.cuda_graph, o.prep),
+                         names};
+      });
+    }
     cv::VideoWriter recording;  // opened on the first frame, once its size is known
     Recorder recorder;
     if (o.record) {
