@@ -32,6 +32,21 @@ Per session, from the per-clip numbers in the same files (frames kept, of the dr
 | 20190926_142435 | 8,036 | 0.932 | 0.914 | 0.144 |
 | 20190926_143632 | 6,955 | 0.985 | 0.925 | 0.349 |
 
+## The C++ pipeline gives the same result (#46)
+
+*Added 2026-10-23 for #46.* The rows above ran the Python tracker. The C++ path was then run the same way: the drone model's engine rebuilt from the shipped ONNX file, a fresh val dump from `tether-pipeline --runtime tensorrt --prep cuda --dump` (the C++ detector with CUDA prep), and the C++ `tether-track --min-score 0.3524462878704071` with the band rule's default ratio. `tether-pipeline` doesn't write track files, so dumping and tracking are its two halves run apart, on the same code.
+
+| Dump | Tracker | ID kept | Frames kept | Results file |
+|---|---|---|---|---|
+| #43's (`yolo26n_drone_1280x736_e19`) | Python (the row above) | 89.7% | 34,317 | `drone-tracking-drone-at-0.352.json` |
+| #43's | **C++** | 89.7% | 34,317 | (not saved: it matched the row above clip by clip) |
+| rebuilt engine (`yolo26n_drone_1280x736`) | **C++** | **89.7%** | **34,317** | `drone-tracking-drone-cpp-at-0.352.json` |
+| rebuilt engine | Python | 89.7% | 34,317 | (not saved: same as the C++ row) |
+
+All four agree on every one of the 42 clips' counts, and the labeled-box row is 33,288 in each. On the rebuilt engine's dump, the C++ and Python track files have the same IDs, statuses and classes on all 78,964 frames (the 42 clips run on the detector and on the labeled boxes), and their boxes are exactly equal.
+
+The rebuilt engine's dump isn't byte-identical to #43's: a TensorRT build times kernels and keeps the fastest, so two builds can add numbers in a different order. Within #16's agreement rule (score ≥ 0.25, IoU ≥ 0.95, scores at most 0.02 apart) all 76,606 checked detections have a partner, the worst score difference is 0.000064, and 17,860 of 39,482 frames are identical to the byte. Scored by `tether-drone-score`, it gives #43's numbers: AP50 0.995, and at 0.352 the same 37,961 of 38,250 drones found (`drone-model-rebuilt-engine.json`).
+
 ## The low-score band
 
 The tracker's second matching pass lets a track that was tracked last frame keep going on a weak detection: one scored above the band's floor but under the cutoff. It never starts a track. The floor was a fixed 0.1, ByteTrack's value at its 0.25 cutoff. A model run at another threshold would get either no band at all (a cutoff of 0.1 or less) or a much wider one.
@@ -88,6 +103,13 @@ tether-antiuav data/Anti-UAV300 --detections results/antiuav-trt/detections/yolo
     --tracker "python -m tether.cli --min-score 0.3524462878704071"
 tether-antiuav data/Anti-UAV300 --detections results/antiuav-trt/detections/yolo26n_1280x736/val \
     --work-dir results/antiuav-e2e/coco-at-0.25 --name coco-at-0.25 --tracker "python -m tether.cli --min-score 0.25"
+```
+
+The C++ row (#46), with the rebuilt engine's dump:
+
+```
+tether-antiuav-detect data/Anti-UAV300 --model models/yolo26n_drone_1280x736.onnx --split val --det-min-score 0.01     --work-dir results/antiuav-trt --detector '"cpp/build/Release/tether-pipeline.exe" --runtime tensorrt --prep cuda'
+tether-antiuav data/Anti-UAV300 --detections results/antiuav-trt/detections/yolo26n_drone_1280x736/val     --work-dir results/antiuav-e2e/drone-cpp-at-0.352 --name drone-cpp-at-0.352     --tracker '"cpp/build/Release/tether-track.exe" --min-score 0.3524462878704071'
 ```
 
 The other rows change `--min-score` (0.25; 0.06577478349208832) and add `--low-score-ratio` (1 for "off"; 0.28373430426985226 for the fixed floor). Each row took about 5.5 minutes, six running at once. The detection dumps are #43's (see [drone-model](drone-model.md) and [drone-coco-baseline](drone-coco-baseline.md) for the commands). The reachable ceiling is `id_kept_ceiling(clip.boxes, 30)` from `python/tether/antiuav.py`, summed over the split's val clips.

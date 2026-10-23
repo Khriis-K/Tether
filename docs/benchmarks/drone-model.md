@@ -5,7 +5,7 @@ Run 2026-10-22 for #43. This is **YOLO26n at 1280×736 fine-tuned on Anti-UAV wi
 Raw results, all from `tether-drone-score` unless named:
 - [`drone-model.json`](drone-model.json): the chosen model.
 - [`drone-model-candidates.json`](drone-model-candidates.json): the pilot and the six checkpoints compared.
-- [`drone-model-breakdown.json`](drone-model-breakdown.json): recall by session, from `tools/drone_breakdown.py`. Its `by_class` names class 0 by COCO's table ("person"), which doesn't apply to this model.
+- [`drone-model-breakdown.json`](drone-model-breakdown.json): recall by session, from `tools/drone_breakdown.py`. Its `by_class` names classes from the model's ONNX metadata, so class 0 is "drone". *Update (2026-10-23, #46): regenerated after the tool stopped naming every class from COCO's table, which had called it "person". Only the name changed: the counts are the same.*
 - [`drone-model-absent-detections.json`](drone-model-absent-detections.json): every detection on a drone-absent frame at the chosen threshold, with its distance in frames to the nearest labeled drone and whether it touches the frame's edge.
 
 Training record:

@@ -320,6 +320,13 @@ In Tether: built once per machine and input size with `trtexec --onnx=models/yol
 
 Gotcha: an engine is tied to the GPU model, the TensorRT version and the input size it was built with. That's why engines stay out of git, and why each model × input size needs its own. An engine from another TensorRT version is refused when it loads (`tether-pipeline` then says to rebuild it); one built on a different GPU may load with only a warning, so treat engines as per-machine build output.
 
+### Model metadata (class names travel with the model)
+An ONNX file can carry key-value text next to its weights. Ultralytics writes the class names there as a Python dict literal, `names: "{0: 'person', 1: 'bicycle', ...}"`, so a program can name what the model detects without its own table. A TensorRT engine is compiled output and keeps none of it.
+
+**In Tether:** the C++ stats panel used to name every class from a hard-coded COCO table, so the one-class drone model's class 0 showed as "person". Since #46 both pipelines take names from `--class-names` if given, else from the `.onnx` file's metadata (read beside the engine on TensorRT too), else COCO's table. The drone model gives "drone"; the COCO models carry COCO's names in their own metadata, so their panel is unchanged. `tools/drone_breakdown.py` reads them from the model its dump's `dump.json` names (`cpp/src/tether/class_names.hpp`, `python/tether/class_names.py`).
+
+**Gotcha:** the class *ID* is all the detector and tracker see, and a detection file stores only that. A name table is a guess about which model wrote the file. Reading it from the model keeps a drone model's 0 from being read as COCO's 0. A run that has only the engine (or `--model X.engine`) needs `--class-names`, or the panel falls back to COCO, and `tether-pipeline` says so when it starts. The Python pipeline draws IDs only, so on the Python side the names matter only to the tools that report classes.
+
 ### Strongly typed network (precision from the model)
 TensorRT 11 takes each layer's precision from the model's own types, instead of picking lower precision on its own (`trtexec` no longer has `--fp16`). A float32 ONNX model gives a float32 engine. TF32, a float32 mode of the GPU's matrix units that keeps fewer mantissa bits, is allowed by default (`--noTF32` turns it off).
 
