@@ -2,6 +2,8 @@
 
 Run 2026-10-22 for #43. This is **YOLO26n at 1280×736 fine-tuned on Anti-UAV with one class, "drone"** (`models/yolo26n_drone_1280x736.onnx`, [ADR 0004](../adr/0004-drone-detector-on-anti-uav.md)), scored on the **session-disjoint val** (`splits/antiuav.json`, seed 0), the same val as the COCO "before" row in [drone-coco-baseline](drone-coco-baseline.md). The checkpoint and the threshold were both chosen on this val, so these are tuned numbers. Anti-UAV test and Seraphim weren't touched.
 
+*Update (2026-10-23, #48): scored once on Anti-UAV test at the frozen 0.352, the same model gets recall 0.884, precision 0.975 and AP50 0.915 (COCO 0.402), with recall by session from 0.670 to 0.995. On Seraphim its AP50 is 0.164, under the COCO model's 0.216. See [drone-test](drone-test.md).*
+
 Raw results, all from `tether-drone-score` unless named:
 - [`drone-model.json`](drone-model.json): the chosen model.
 - [`drone-model-candidates.json`](drone-model-candidates.json): the pilot and the six checkpoints compared.

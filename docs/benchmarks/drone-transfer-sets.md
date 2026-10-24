@@ -7,6 +7,8 @@ Built 2026-10-22 for #45, following [ADR 0004](../adr/0004-drone-detector-on-ant
 
 The only detector run on the two outside sets is the pretrained COCO **YOLO26n at 1280×736** (`yolo26n_1280x736`), scored class-agnostically: any detection counts as a drone. Nothing was tuned on these sets. The drone model (`yolo26n_drone_1280x736`) wasn't run on Seraphim, the birds or Anti-UAV test. Its only number here is from its existing val dump (#43). No detector was run on Anti-UAV test; its empty-sky frames were picked from labels and frame indices alone.
 
+*Update (2026-10-23, #48): the drone model's rows on these sets are in [drone-test](drone-test.md): Seraphim AP50 0.164, 19 of 86 bird images and 190 empty-sky detections at 0.352, all missing their targets.*
+
 Committed lists (no images; Seraphim and Drone-vs-Bird are third-party and scraped, so none go in git or `docs/media`):
 - [`splits/seraphim-test.json`](../../splits/seraphim-test.json): the kept and dropped Seraphim test images, with the overlay rule and the 20 highest-scoring kept images.
 - [`splits/seraphim-test-eye-checked.json`](../../splits/seraphim-test-eye-checked.json): the 432 Seraphim images looked at by eye.

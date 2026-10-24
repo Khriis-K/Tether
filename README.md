@@ -16,6 +16,17 @@ Real-time multi-object tracker in C++ that keeps stable IDs on fast-moving and t
 
 Built in stages: a Python prototype first, then a C++ port, then benchmarks, then GPU speed work. Progress is tracked in the [milestones](https://github.com/Khriis-K/Tether/milestones).
 
+**Drone detection (stage 5):** the fine-tuned drone model `yolo26n_drone_1280x736` was scored once on held-out data ([docs/benchmarks/drone-test.md](docs/benchmarks/drone-test.md)). What it can claim:
+- On new flights from the Anti-UAV site's one camera, it finds the drone on 88.4% of frames at 97.5% precision. The COCO model it started from (`yolo26n_1280x736`, any class counted as a drone) gets 22.2% and 75.7% at the tracker's 0.25, and 45.7% and 44.8% at its own best cut.
+- It meets the speed targets in the shipped configuration, measured on one laptop GPU (RTX 5070 Laptop) on one val clip.
+
+What it can't claim yet:
+- **ID retention.** Tracked end to end, it keeps the drone's ID on 75.3% of test frames, short of its target of 95% of what the labeled boxes give (82.6%).
+- **False alarms.** It calls a bird a drone on 19 of 86 bird images. On 2.25 min of this site's empty sky it makes 190 false detections, 174 of them on one lamp in a night clip.
+- **Transfer.** On the Seraphim drone images it scores below the untrained COCO model (AP50 0.164 against 0.216).
+
+It isn't a counter-UAS system.
+
 ## Python prototype
 
 ```
@@ -127,7 +138,7 @@ trtexec --onnx=models/yolo26n_drone_1280x736.onnx --saveEngine=models/yolo26n_dr
 tether-pipeline VIDEO --model models/yolo26n_drone_1280x736.onnx --runtime tensorrt --prep cuda --pipeline parallel --show
 ```
 
-The stats panel names each track's class from the model's ONNX metadata, so the drone model's tracks read "drone" and the COCO model's read COCO's names, as before. On TensorRT the metadata is read from the `.onnx` file beside the engine; with only the engine, pass `--class-names drone`. Its speed in the shipped configuration: [docs/benchmarks/drone-speed.md](docs/benchmarks/drone-speed.md). The tracker inside `tether-pipeline` uses its default score cutoff, 0.25. The drone model's val-tuned cutoff, 0.352, is a `tether-track --min-score` setting for scoring dumped detections ([docs/benchmarks/drone-tracking.md](docs/benchmarks/drone-tracking.md)).
+The stats panel names each track's class from the model's ONNX metadata, so the drone model's tracks read "drone" and the COCO model's read COCO's names, as before. On TensorRT the metadata is read from the `.onnx` file beside the engine; with only the engine, pass `--class-names drone`. Its speed in the shipped configuration: [docs/benchmarks/drone-speed.md](docs/benchmarks/drone-speed.md). The tracker inside `tether-pipeline` uses its default score cutoff, 0.25. The drone model's val-tuned cutoff, 0.352, is a `tether-track --min-score` setting for scoring dumped detections ([docs/benchmarks/drone-tracking.md](docs/benchmarks/drone-tracking.md)). Its one test run, against the targets set before it (two pass, four miss): [docs/benchmarks/drone-test.md](docs/benchmarks/drone-test.md).
 
 ## Docker (Linux + NVIDIA GPU)
 

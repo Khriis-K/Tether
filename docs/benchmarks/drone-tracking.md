@@ -2,6 +2,8 @@
 
 Run 2026-10-22 for #44. Until now every Anti-UAV tracking number gave the tracker the *labeled* boxes, with some deleted on purpose ([antiuav-dropout](antiuav-dropout.md)). Here the tracker runs on what a detector actually found, on the **session-disjoint val** (`splits/antiuav.json`, seed 0: 42 clips, 38,250 frames with the drone labeled), scored with the same ID-kept rule, beside the same clips run on their labeled boxes ([ADR 0004](../adr/0004-drone-detector-on-anti-uav.md)). The detector's own misses are the dropout, so nothing is deleted on top. Anti-UAV test and Seraphim weren't touched.
 
+*Update (2026-10-23, #48): on Anti-UAV test, run once with the C++ tracker at 0.352, the drone model keeps the ID on 75.3% of frames against 82.6% on the labeled boxes (0.911 ×, missing the ≥ 0.95 × target). The COCO model keeps 15.4% at 0.25. See [drone-test](drone-test.md).*
+
 Two detectors, both YOLO26n at 1280×736 on TensorRT with scores saved down to 0.01 (the dumps #43 scored):
 - **`yolo26n_drone_1280x736_e19`**: the fine-tuned drone model ([drone-model](drone-model.md)). The shipped file `models/yolo26n_drone_1280x736.onnx` is byte-identical to it (same SHA-256), so its val dump was reused.
 - **`yolo26n_1280x736`**: the pretrained COCO model, every class handed over as a drone (the "before" row, [drone-coco-baseline](drone-coco-baseline.md)).

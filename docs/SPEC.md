@@ -245,6 +245,16 @@ The drone model `yolo26n_drone_1280x736` at the frozen threshold 0.352, TensorRT
   - Val: none (`drone-transfer-sets.md`).
 - **Recall on tiny and small drones: reported, no target.** Val has 8 tiny and 12 small boxes. The drone model finds 0 of 8 and 3 of 12 (`drone-model.md`), too few to judge.
 
+**Result on test (#48, run once; `docs/benchmarks/drone-test.md`):**
+- recall 0.884: **met**;
+- precision 0.975: **met**;
+- AP50 0.915 (COCO 0.402);
+- ID kept 75.3% against 82.6% on the labels, 0.911 ×: **missed**;
+- birds 19 of 86: **missed**;
+- empty sky 190 detections in 2.25 min: **missed**;
+- Seraphim AP50 0.164 against COCO's 0.216: **missed**;
+- tiny 0 of 39, small 397 of 823.
+
 **Upgrade payoffs**
 - Tracking step, C++ vs. Python: 10x+ faster.
 - Whole pipeline, C++ vs. Python: 2x+ faster.

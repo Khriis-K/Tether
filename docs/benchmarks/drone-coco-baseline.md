@@ -2,6 +2,8 @@
 
 Run 2026-10-21 for #42. This is the pretrained COCO **YOLO26n at 1280×736** (`models/yolo26n_1280x736.onnx`, the shipped detector, ADR 0003), scored **class-agnostically**: any detection counts as "drone". It's run on the **new session-disjoint Anti-UAV300 val** (`splits/antiuav.json`, seed 0) and is the row every drone-model number is compared with ([ADR 0004](../adr/0004-drone-detector-on-anti-uav.md)). Nothing was trained on these frames. Anti-UAV test and Seraphim weren't touched.
 
+*Update (2026-10-23, #48): on Anti-UAV test, at the same TensorRT runtime and 0.01 floor, the COCO model's AP50 is 0.402; at 0.25 recall is 0.222 and precision 0.757 (`drone-test-coco.json`, [drone-test](drone-test.md)).*
+
 Raw results: [`drone-coco-baseline.json`](drone-coco-baseline.json) (from `tether-drone-score`), and [`drone-coco-baseline-breakdown.json`](drone-coco-baseline-breakdown.json) for the by-class and by-session tables (from `tools/drone_breakdown.py`).
 
 ## The val

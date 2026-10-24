@@ -124,6 +124,23 @@ The transfer test has a target.
 
 - In the shipped configuration (TensorRT, CUDA prep, parallel) the drone model ran 195.59–198.63 FPS with P99 6.46–6.49 ms, in both rounds, against 120+ FPS and P99 < 16 ms. It's decode-bound (capture 99.7% busy). It was timed on the first val clip, `train/20190925_131530_1_1`, not the earlier speed clip, which is in test (`docs/benchmarks/drone-speed.md`).
 
+## Outcome (#48)
+
+Scored once on 2026-10-23 with every setting above frozen (`docs/benchmarks/drone-test.md`). **Targets 1 and 2 pass, and 4, 5, 6 and 7 fail.** Target 9 was met in #46.
+
+| # | Target | Result | Verdict |
+|---|---|---|---|
+| 1 | Recall ≥ 0.80 | 0.884 | PASS |
+| 2 | Precision ≥ 0.90 | 0.975 | PASS |
+| 3 | AP50, reported | 0.915 (COCO 0.402) | reported |
+| 4 | ID kept ≥ 0.95 × labeled-box row | 75.3% against 82.6%: 0.911 × | FAIL |
+| 5 | Birds ≤ 8 of 86 | 19 of 86 | FAIL |
+| 6 | Empty sky ≤ 4 in 2.25 min | 190 (174 on one lamp in a night clip) | FAIL |
+| 7 | Seraphim AP50 > 0.216 | 0.164 | FAIL |
+| 8 | Tiny and small recall, reported | tiny 0 of 39, small 397 of 823 | reported |
+
+Target 7's failure names the next experiment above: training on Seraphim. Nothing was re-tuned after these numbers.
+
 ## Consequences
 
 - **The spec changes.** Training a drone detector is in scope as stage 5, scoped to this ADR, and the drone milestone's targets are added. The Android app, Jetson and infrared stay out of scope. Infrared, a bearing output and a low-latency mode are candidates for a later drone milestone.

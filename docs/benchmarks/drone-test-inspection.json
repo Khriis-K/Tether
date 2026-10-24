@@ -1,0 +1,161 @@
+{
+ "note": "one-off counts from the #48 test dumps (results/, not in git), made for drone-test.md; scores >= threshold, empty-sky frames from splits/antiuav-empty-sky.json (half-open runs)",
+ "empty_sky_alarms_by_clip": {
+  "yolo26n_drone_1280x736 at 0.3524462878704071": {
+   "total": 190,
+   "by_clip": {
+    "20190925_124612_1_3": 1,
+    "20190925_134301_1_5": 1,
+    "20190925_134301_1_6": 1,
+    "20190925_200805_1_7": 174,
+    "20190926_095902_1_3": 13
+   }
+  },
+  "yolo26n_1280x736 at 0.25": {
+   "total": 8,
+   "by_clip": {
+    "20190925_134301_1_7": 1,
+    "20190925_200805_1_7": 7
+   }
+  }
+ },
+ "drone_misses_at_0.352": {
+  "20190925_124000_1_5": {
+   "drone_frames": 1000,
+   "hit": 455,
+   "no_box": 538,
+   "box_iou_under_0.5": 7
+  },
+  "20190925_111757_1_2": {
+   "drone_frames": 986,
+   "hit": 384,
+   "no_box": 519,
+   "box_iou_under_0.5": 83
+  },
+  "20190925_124000_1_8": {
+   "drone_frames": 1000,
+   "hit": 413,
+   "no_box": 547,
+   "box_iou_under_0.5": 40
+  }
+ },
+ "seraphim_large_drone_images": {
+  "images_with_a_large_drone": 3723,
+  "with_no_box_at_0.352": 3049,
+  "median_top_score": 0.02763480320572853,
+  "looked_at_by_eye_seed_0": [
+   "96400.jpg",
+   "104568.jpg",
+   "12214.jpg",
+   "70218.jpg",
+   "133198.jpg",
+   "126637.jpg",
+   "99230.jpg",
+   "76194.jpg",
+   "123787.jpg",
+   "86138.jpg",
+   "197034.jpg",
+   "65129.jpg",
+   "131191.jpg",
+   "57267.jpg",
+   "72743.jpg"
+  ]
+ },
+ "bird_images_with_alarm_at_0.352": [
+  {
+   "image": "BT (2).jpg",
+   "boxes": 1,
+   "top_score": 0.3751365840435028
+  },
+  {
+   "image": "BT (63).jpg",
+   "boxes": 1,
+   "top_score": 0.3634261190891266
+  },
+  {
+   "image": "BT (64).jpg",
+   "boxes": 1,
+   "top_score": 0.4824347496032715
+  },
+  {
+   "image": "BT (90).jpg",
+   "boxes": 1,
+   "top_score": 0.6631126403808594
+  },
+  {
+   "image": "BT (92).jpg",
+   "boxes": 1,
+   "top_score": 0.42310452461242676
+  },
+  {
+   "image": "BT (211).jpg",
+   "boxes": 1,
+   "top_score": 0.6555579304695129
+  },
+  {
+   "image": "BT (212).jpg",
+   "boxes": 1,
+   "top_score": 0.7051458954811096
+  },
+  {
+   "image": "BT (213).jpg",
+   "boxes": 1,
+   "top_score": 0.730474054813385
+  },
+  {
+   "image": "BT (214).jpg",
+   "boxes": 1,
+   "top_score": 0.6872930526733398
+  },
+  {
+   "image": "BT (225).jpg",
+   "boxes": 1,
+   "top_score": 0.4972926080226898
+  },
+  {
+   "image": "BT (226).jpg",
+   "boxes": 1,
+   "top_score": 0.515381932258606
+  },
+  {
+   "image": "BT (228).jpg",
+   "boxes": 1,
+   "top_score": 0.7755870223045349
+  },
+  {
+   "image": "BT (230).jpg",
+   "boxes": 1,
+   "top_score": 0.713378369808197
+  },
+  {
+   "image": "BT (287).jpg",
+   "boxes": 1,
+   "top_score": 0.3667944669723511
+  },
+  {
+   "image": "BT (292).jpg",
+   "boxes": 1,
+   "top_score": 0.48938077688217163
+  },
+  {
+   "image": "BT (295).jpg",
+   "boxes": 1,
+   "top_score": 0.4460529685020447
+  },
+  {
+   "image": "BT (317).jpg",
+   "boxes": 1,
+   "top_score": 0.4500159025192261
+  },
+  {
+   "image": "BT (335).jpg",
+   "boxes": 1,
+   "top_score": 0.4349897801876068
+  },
+  {
+   "image": "BT (354).jpg",
+   "boxes": 1,
+   "top_score": 0.42521989345550537
+  }
+ ]
+}
