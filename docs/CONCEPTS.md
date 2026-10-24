@@ -290,6 +290,13 @@ A test set merged from many sources may contain copies of your training data, wh
 
 **Gotcha:** the check only knows the forms you tested. Rotated, sheared or cropped copies (Roboflow augmentations) and Anti-UAV's infrared overlay would pass. The by-eye sample bounds what slipped through (0 of 384 random images: under about 1% at 95% confidence by the rule of three), but doesn't make it zero.
 
+### Pre-registered targets (set before test, not from the val score)
+A pass/fail bar written down before the test run, with a reason for each number. If a target is set after seeing the result, or just under a tuned val score, the test can't fail, so passing it shows nothing. The reason has to come from outside the val score: what the rest of the system needs, an existing rule, a reference model, or what the sample can resolve.
+
+**In Tether:** the drone milestone's accuracy targets were set in #47 from val, before any drone model touched Anti-UAV test, Seraphim or the bird images ([ADR 0004](adr/0004-drone-detector-on-anti-uav.md#accuracy-targets-47)). None of them sits near its val score. Val had recall 0.992; the target is ≥ 0.80, the 20% miss rate the tracker's dropout test already specifies. End-to-end ID kept must be ≥ 0.95 × the labeled-box row on the same test clips, the dropout test's own relative rule. Seraphim must beat the COCO model the drone model was fine-tuned from (AP50 0.216), not an absolute number. Tiny and small recall, with 20 val boxes, has no target at all.
+
+**Gotcha:** a target is only as sharp as the sample's resolution. 86 bird images make one image 1.2 points, and 2.25 minutes of empty sky make one false detection 0.44 per minute. So those two rows are coarse bars (≤ 8 images, ≤ 4 detections) that catch only a gross failure. Write the resolution down beside the bar, and say "report only" when the sample can't carry a pass/fail.
+
 ---
 
 ## Detection & runtimes
