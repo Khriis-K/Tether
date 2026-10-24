@@ -6,6 +6,10 @@ Real-time multi-object tracker in C++ that keeps stable IDs on fast-moving and t
 
 *MOT17-09, recorded with `tether-pipeline --record` in the shipped configuration. Click for the full video. Each person gets a colour and an ID; the trail is where they've been and the thin dashed box is where the tracker expects them next. A thick orange dashed box is a person the detector lost, which the tracker is still searching for. Video: [MOT17](https://motchallenge.net/data/MOT17/) (CC BY-NC-SA 3.0).*
 
+[![Tether's HUD tracking a drone on an Anti-UAV clip](docs/media/demo-antiuav-drone.webp)](docs/media/demo-antiuav-drone.mp4)
+
+*A drone tracked by the drone model (`yolo26n_drone_1280x736`), recorded with `tether-pipeline --record` on TensorRT. The clip is Anti-UAV `test/20190925_111757_1_1`, the one the project's speed benchmarks use, chosen because it's the standard clip, not for how the model does on it. Across the whole test set the model met 2 of its 6 targets ([drone-test.md](docs/benchmarks/drone-test.md)). Drawing the window and recording slow the run down; its speed without them is in [drone-speed.md](docs/benchmarks/drone-speed.md). Video: [Anti-UAV](https://github.com/ZhaoJ9014/Anti-UAV) (MIT License, Copyright (c) 2020 Zhao Jian).*
+
 ## In short
 
 Tether follows moving objects in video, people or drones, and keeps a steady ID on each one, even when it's briefly hidden or the detector misses it for a moment. It runs in real time on a laptop GPU. It's a portfolio project, built and measured on one laptop, not a product.

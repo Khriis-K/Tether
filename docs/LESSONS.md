@@ -51,6 +51,8 @@ Tether is a multi-object tracker built to keep stable IDs on fast-moving and tem
 
 **Built (README, #20):** the README now leads with a demo video (`docs/media/demo-mot17-09.mp4`, MOT17-09 recorded with `tether-pipeline --record` in the shipped configuration, with an animated preview), a table of every spec target marked met or missed, and one benchmark table per comparison, each linking its write-up.
 
+**Built (drone demo):** a second README video (`docs/media/demo-antiuav-drone.mp4`, with an animated preview) shows the drone model tracking the Anti-UAV clip the speed benchmarks use, recorded with `tether-pipeline --record` on TensorRT. The clip was picked because it is the standard one, and the caption points to the test results, where the model met 2 of 6 targets.
+
 **Opt-in, not the defaults:** TensorRT and CUDA frame prep need an NVIDIA GPU and, outside Docker, TensorRT's login-gated download.
 
 ### Headline results
