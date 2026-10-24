@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Tether: a real-time multi-object tracker in C++ and CUDA that keeps stable IDs on fast-moving and briefly hidden objects, with every result measured against targets set up front.">
+<title>Tether</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Look: the app's own HUD and stats panel (cpp/src/tether/hud.hpp, panel.cpp), unrolled into a page.
+   Near-black, off-white and the signal orange are the HUD's constants; orange means "searching" there,
+   so here it marks what was lost or missed. Track colours step around the hue wheel by the golden ratio,
+   as track_color() does. Single dark theme by choice: the HUD and panel are dark-only. */
+:root {
+  color-scheme: dark;
+  --ink: #101214;      /* NEAR_BLACK */
+  --bg: #0b0c0e;
+  --panel: #15181b;
+  --raised: #1d2125;
+  --line: #2a2f35;
+  --text: #f0eeeb;     /* OFF_WHITE */
+  --muted: #9ba3ad;
+  --dim: #6b737d;
+  --accent: #ff6a00;   /* ACCENT: searching, missed */
+  --ok: #3ee07a;
+  --part: #e8c547;
+  --unknown: #8a93a0;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+a { color: var(--text); text-decoration-color: var(--dim); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--text); }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3, p, ul, ol, figure { margin: 0; }
+h1, h2, h3 { text-wrap: balance; font-weight: 600; }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--raised); padding: 1px 5px; border-radius: 2px; }
+.mono { font-family: var(--mono); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; }
+
+/* Corner brackets: the HUD's mark for a tracked object. */
+.brackets { position: relative; }
+.brackets::before, .brackets::after { content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none; border-color: var(--bc, var(--dim)); border-style: solid; }
+.brackets::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+.brackets::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+.label { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.chip { display: inline-block; font: 600 12px/1 var(--mono); padding: 4px 6px; border-radius: 2px; color: var(--ink); background: var(--c, var(--text)); white-space: nowrap; }
+
+/* Top bar */
+.bar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.bar .wrap { display: flex; align-items: center; gap: 20px; height: 52px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 0.01em; text-decoration: none; }
+.brand svg { width: 20px; height: 20px; flex: none; }
+.nav { display: flex; gap: 18px; font-family: var(--mono); font-size: 13px; }
+.nav a { color: var(--muted); text-decoration: none; }
+.nav a:hover { color: var(--text); }
+.bar .btn { margin-left: auto; }
+@media (width < 820px) { .nav { display: none; } }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 2px; font: 600 14px var(--sans); text-decoration: none; white-space: nowrap; border: 1px solid transparent; cursor: pointer; }
+.btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; }
+.btn-primary { background: var(--text); color: var(--ink); }
+.btn-primary:hover { background: #fff; }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--line); }
+.btn-ghost:hover { border-color: var(--muted); }
+
+/* Hero */
+.hero { padding-block: 56px 48px; display: grid; gap: 40px; align-items: center; }
+@media (width >= 980px) { .hero { grid-template-columns: 1fr 1.1fr; padding-block: 72px 64px; } }
+.hero-text { display: grid; gap: 22px; min-width: 0; }
+h1 { font-size: clamp(34px, 5.2vw, 56px); line-height: 1.06; letter-spacing: -0.02em; font-weight: 700; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { color: #d3d6da; font-size: 17px; max-width: 58ch; }
+.lede b { color: var(--text); font-weight: 600; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; }
+.repo { font-family: var(--mono); font-size: 13px; color: var(--dim); }
+
+.headline-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); max-width: 560px; }
+.headline-stats div { background: var(--bg); padding: 12px 14px; display: grid; gap: 2px; }
+.headline-stats b { font: 600 22px/1.1 var(--mono); }
+.headline-stats span { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+@media (width < 480px) { .headline-stats div { padding: 10px; } .headline-stats b { font-size: 15px; } }
+
+/* Simulator */
+.sim { background: var(--panel); border: 1px solid var(--line); min-width: 0; }
+.sim-head { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.live { display: inline-flex; align-items: center; gap: 8px; }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.sim.paused .live i { background: var(--dim); }
+.sim-head .btns { margin-left: auto; display: flex; gap: 8px; }
+.sim-head button { font: 500 12px var(--mono); color: var(--text); background: var(--raised); border: 1px solid var(--line); padding: 4px 10px; border-radius: 2px; cursor: pointer; }
+.sim-head button:hover { border-color: var(--muted); }
+canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; background: #0d0f11; }
+.sim-body { display: grid; gap: 14px; padding: 14px; }
+.controls { display: grid; gap: 12px; }
+@media (width >= 560px) { .controls { grid-template-columns: 1fr auto; align-items: center; } }
+.slider { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; font-size: 14px; }
+.slider output { font: 600 14px var(--mono); min-width: 4ch; text-align: right; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; user-select: none; }
+.toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+.readout { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); padding-top: 12px; gap: 8px; }
+.readout div { display: grid; gap: 0; }
+.readout b { font: 600 20px var(--mono); }
+.readout span { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend svg { width: 26px; height: 16px; flex: none; }
+.note { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+/* Sections */
+section { padding-block: 64px; border-top: 1px solid var(--line); scroll-margin-top: 52px; }
+.sec-head { display: grid; gap: 12px; margin-bottom: 32px; max-width: 760px; }
+h2 { font-size: clamp(26px, 3.4vw, 36px); line-height: 1.15; letter-spacing: -0.015em; }
+.sec-head p { color: #c9cdd2; }
+h3 { font-size: 18px; line-height: 1.3; }
+.grid { display: grid; gap: 16px; }
+@media (width >= 760px) { .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.card { background: var(--panel); border: 1px solid var(--line); padding: 20px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.card p { color: #c9cdd2; font-size: 15px; }
+.card ul { padding-left: 18px; color: #c9cdd2; font-size: 15px; display: grid; gap: 6px; }
+
+/* Videos */
+.videos { display: grid; gap: 24px; }
+@media (width >= 900px) { .videos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.videos figure { display: grid; gap: 12px; align-content: start; }
+.frame { --bc: var(--text); border: 1px solid var(--line); background: #000; }
+.frame video, .frame img { display: block; width: 100%; height: auto; }
+figcaption { font-size: 14px; color: var(--muted); line-height: 1.55; }
+figcaption b { color: var(--text); font-weight: 600; }
+.panel-shot { margin-top: 24px; }
+
+/* Pipeline */
+.pipe { display: grid; gap: 10px; }
+@media (width >= 900px) { .pipe { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; } }
+.stage { background: var(--panel); border: 1px solid var(--line); padding: 16px; display: grid; gap: 6px; align-content: start; position: relative; }
+@media (width >= 900px) {
+  .stage + .stage { border-left: none; }
+  .stage:not(:last-child)::after { content: ""; position: absolute; right: -7px; top: 26px; width: 12px; height: 12px; background: var(--bg); border: 1px solid var(--line); transform: rotate(45deg); z-index: 1; border-left: none; border-bottom: none; }
+}
+.stage .label { color: var(--text); }
+.stage p { font-size: 14px; color: #c9cdd2; }
+.stage .how { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.pipe-note { margin-top: 14px; font-size: 14px; color: var(--muted); max-width: 820px; }
+
+.lifecycle { display: grid; gap: 10px; margin-top: 32px; }
+@media (width >= 900px) { .lifecycle { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.state { border: 1px solid var(--line); padding: 16px; display: grid; gap: 8px; align-content: start; background: var(--panel); }
+.state svg { width: 64px; height: 44px; }
+.state p { font-size: 14px; color: #c9cdd2; }
+
+/* Bars */
+.bars { display: grid; gap: 22px; }
+.bar-row { display: grid; gap: 4px; }
+.bar-row .top { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.bar-row .top .mono { font-weight: 600; white-space: nowrap; }
+.track { position: relative; height: 10px; background: var(--raised); }
+.fill { position: absolute; inset: 0 auto 0 0; background: var(--c, var(--text)); }
+.tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--accent); }
+.tick::after { content: attr(data-l); position: absolute; top: 19px; left: 50%; transform: translateX(-50%); font: 500 11px var(--mono); color: var(--accent); white-space: nowrap; }
+.tick.end::after { left: auto; right: 0; transform: none; }
+.caveat { font-size: 13.5px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 12px; }
+.caveat b { color: var(--text); font-weight: 600; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 11.5px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+td.n, th.n { text-align: right; font-family: var(--mono); white-space: nowrap; }
+tr.us td { color: var(--text); font-weight: 600; }
+tr.dim td { color: var(--muted); }
+.scroll { overflow-x: auto; }
+
+/* Scorecard */
+.score { display: grid; gap: 0; border: 1px solid var(--line); }
+.score-row { display: grid; gap: 6px 16px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.score-row:last-child { border-bottom: none; }
+@media (width >= 820px) { .score-row { grid-template-columns: 110px minmax(0, 1.1fr) minmax(0, 1.4fr); align-items: baseline; } }
+.score-row .t { font-size: 15px; font-weight: 500; }
+.score-row .r { font-size: 14px; color: #c9cdd2; }
+.st { font: 600 11.5px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; padding: 5px 7px; border: 1.5px solid currentColor; justify-self: start; white-space: nowrap; }
+.st.met { color: var(--ok); }
+.st.part { color: var(--part); }
+.st.missed { color: var(--accent); border-style: dashed; border-width: 2px; }
+.st.unknown { color: var(--unknown); border-style: dotted; }
+.score-group { font: 500 12px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.filters button { font: 500 12.5px var(--mono); color: var(--muted); background: transparent; border: 1px solid var(--line); padding: 5px 10px; border-radius: 2px; cursor: pointer; }
+.filters button[aria-pressed=true] { color: var(--ink); background: var(--text); border-color: var(--text); }
+
+/* Drone */
+.claims { display: grid; gap: 16px; }
+@media (width >= 820px) { .claims { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.claims .card.can { --bc: var(--ok); }
+.claims .card.cant { --bc: var(--accent); }
+.claims li b { color: var(--text); font-weight: 600; }
+
+/* Playbook */
+.playbook { counter-reset: n; display: grid; gap: 0; border-top: 1px solid var(--line); }
+.play { counter-increment: n; display: grid; grid-template-columns: 44px 1fr; gap: 4px 12px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.play::before { content: counter(n, decimal-leading-zero); font: 600 14px var(--mono); color: var(--accent); grid-row: span 2; padding-top: 2px; }
+.play h3 { font-size: 16px; }
+.play p { font-size: 14.5px; color: #c9cdd2; }
+
+.stack { display: grid; gap: 16px; }
+@media (width >= 760px) { .stack { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.stack div { display: grid; gap: 6px; align-content: start; }
+.stack p { font-size: 14.5px; color: #d3d6da; }
+
+.limits { display: grid; gap: 10px; padding-left: 18px; max-width: 860px; }
+.limits li { color: #c9cdd2; }
+.limits b { color: var(--text); font-weight: 600; }
+
+footer { border-top: 1px solid var(--line); padding-block: 56px 72px; }
+.foot { display: grid; gap: 28px; }
+.foot h2 { max-width: 20ch; }
+.credits { display: grid; gap: 6px; font-size: 13px; color: var(--muted); max-width: 900px; }
+pre { margin: 0; font: 13px/1.6 var(--mono); background: var(--panel); border: 1px solid var(--line); padding: 14px 16px; overflow-x: auto; color: #d3d6da; }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Tether, top of page">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M1 7V1h6M13 1h6v6M19 13v6h-6M7 19H1v-6" fill="none" stroke="#f0eeeb" stroke-width="2"/><circle cx="10" cy="10" r="2.5" fill="#ff6a00"/></svg>
+      Tether
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#demo">demo</a>
+      <a href="#how">how it works</a>
+      <a href="#results">results</a>
+      <a href="#scorecard">scorecard</a>
+      <a href="#drone">drone model</a>
+      <a href="#lessons">lessons</a>
+    </nav>
+    <a class="btn btn-primary" href="https://github.com/Khriis-K/Tether">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</header>
+
+<main id="top">
+<div class="wrap hero">
+  <div class="hero-text">
+    <p class="label">Multi-object tracking · C++ / CUDA / TensorRT · real time</p>
+    <h1>Follow every object. Keep its ID when it <em>vanishes</em> for a moment.</h1>
+    <p class="lede">Tether follows moving objects in video, people or drones, and keeps a steady ID on each one, even when it's briefly hidden or the detector misses it. A YOLO26n detector finds objects each frame; a <b>hand-written tracker</b> links them over time. It was built in Python first, then <b>ported to C++ with identical output</b> and moved onto an NVIDIA GPU. Every goal was set before it was measured, and the misses are reported beside the wins.</p>
+    <div class="headline-stats" role="list">
+      <div role="listitem"><b>195</b><span>FPS on a video file, against a 120 goal</span></div>
+      <div role="listitem"><b>= ByteTrack</b><span>on MOT17's three agreed scores</span></div>
+      <div role="listitem"><b>462 / 462</b><span>files where Python and C++ match frame for frame</span></div>
+    </div>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/Khriis-K/Tether">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.530 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.130-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.870 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View the code on GitHub
+      </a>
+      <a class="btn btn-ghost" href="#scorecard">See every target, met or missed</a>
+    </div>
+    <p class="repo">github.com/Khriis-K/Tether</p>
+  </div>
+
+  <div class="sim" id="sim">
+    <div class="sim-head">
+      <span class="label live"><i aria-hidden="true"></i>Toy tracker · live</span>
+      <div class="btns">
+        <button type="button" id="sim-pause">Pause</button>
+        <button type="button" id="sim-reset">Reset</button>
+      </div>
+    </div>
+    <canvas id="sim-canvas" width="960" height="600" role="img" aria-label="An animation of five objects moving across a dark scene, one passing behind a pillar, with tracker boxes and ID labels following them."></canvas>
+    <div class="sim-body">
+      <div class="controls">
+        <label class="slider">Detections deleted
+          <input type="range" id="sim-drop" min="0" max="60" step="5" value="20" aria-describedby="sim-note">
+          <output id="sim-drop-out" for="sim-drop">20%</output>
+        </label>
+        <label class="toggle"><input type="checkbox" id="sim-search" checked> Search for lost tracks</label>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span><svg viewBox="0 0 26 16"><path d="M2 7V2h5M19 2h5v5M24 9v5h-5M7 14H2V9" fill="none" stroke="#3ee07a" stroke-width="2"/></svg>tracked</span>
+        <span><svg viewBox="0 0 26 16"><rect x="2" y="2" width="22" height="12" fill="none" stroke="#3ee07a" stroke-width="1" stroke-dasharray="3 2"/></svg>where it should be next</span>
+        <span><svg viewBox="0 0 26 16"><rect x="2" y="2" width="22" height="12" fill="none" stroke="#ff6a00" stroke-width="2.5" stroke-dasharray="5 3"/></svg>searching (detector lost it)</span>
+      </div>
+      <div class="readout" aria-live="off">
+        <div><b id="r-obj">5</b><span>objects</span></div>
+        <div><b id="r-ids">0</b><span>IDs handed out</span></div>
+        <div><b id="r-sw">0</b><span>ID switches</span></div>
+        <div><b id="r-search">0</b><span>searching now</span></div>
+      </div>
+      <p class="note" id="sim-note">A toy written for this page, not Tether's code or output: a constant-velocity Kalman filter, greedy matching in two stages, and the same lifecycle (3 hits to confirm, up to 30 frames of searching). Turn searching off and every gap behind the pillar costs a new ID. Switches with searching on are mostly two objects crossing while a detection is missing, a failure real trackers share. Tether's real version uses staged Hungarian matching, a capped search gate and more.</p>
+    </div>
+  </div>
+</div>
+
+<section id="demo">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="label">Recorded in the running app</p>
+      <h2>The HUD, on real footage</h2>
+      <p>Both clips were recorded with <code>tether-pipeline --record</code> on TensorRT. Each object gets a colour and an ID, a fading trail, and a thin dashed box where the tracker expects it next. A thick orange dashed box is something the detector lost that the tracker is still searching for.</p>
+    </div>
+    <div class="videos">
+      <figure>
+        <div class="frame brackets"><video src="media/demo-mot17-09.mp4" poster="media/poster-mot17-09.jpg" width="960" height="540" muted loop playsinline autoplay preload="metadata" controls aria-label="Tether tracking pedestrians on MOT17-09"></video></div>
+        <figcaption><b>People, MOT17-09.</b> The shipped configuration: YOLO26n at 1280×736, TensorRT, CUDA frame prep, parallel pipeline. Video: <a href="https://motchallenge.net/data/MOT17/">MOT17</a>, CC BY-NC-SA 3.0.</figcaption>
+      </figure>
+      <figure>
+        <div class="frame brackets"><video src="media/demo-antiuav-drone.mp4" poster="media/poster-antiuav-drone.jpg" width="960" height="540" muted loop playsinline autoplay preload="metadata" controls aria-label="Tether tracking a drone on an Anti-UAV clip"></video></div>
+        <figcaption><b>A drone, Anti-UAV.</b> The fine-tuned drone model on clip <code>test/20190925_111757_1_1</code>, the standard clip the speed benchmarks use, picked for that and not for how the model does on it. Across the whole test set the model met 2 of its 6 targets (<a href="#drone">below</a>). Video: <a href="https://github.com/ZhaoJ9014/Anti-UAV">Anti-UAV</a>, MIT License, © 2020 Zhao Jian.</figcaption>
+      </figure>
+    </div>
+    <figure class="panel-shot">
+      <div class="frame brackets"><img src="media/panel-mot17-09.jpg" width="2432" height="994" loading="lazy" alt="The HUD beside its stats panel: a big FPS number, average and worst 1% frame time, end-to-end delay, a bar per pipeline step, the current tracks and the speed settings."></div>
+      <figcaption><b>The stats panel.</b> A Dear ImGui panel beside the video: live FPS, average and worst 1% (P99) frame time, end-to-end delay, a bar per step, the current tracks and the settings in use. On a real run every number it showed matched the offline timing tool on the same frames, to the panel's one decimal. This screenshot is from a CPU run (ONNX Runtime, CPU prep, sequential, as its settings rows show), which is why it reads 13.3 FPS.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="label">How it works</p>
+      <h2>Five stages, each on its own thread</h2>
+      <p>The detector says what's in this frame. The tracker decides which of those things it saw last frame. In the shipped configuration each stage runs on its own thread, joined by one-frame queues, and the frame never leaves the GPU between prep and detect.</p>
+    </div>
+    <div class="pipe">
+      <div class="stage"><span class="label">01 capture</span><p>Decode the next frame from a video, a webcam or a folder of images.</p><span class="how">OpenCV · one video-source interface</span></div>
+      <div class="stage"><span class="label">02 prep</span><p>Letterbox, reorder and scale in one CUDA kernel, bit-identical to CPU prep on 1920×1080 frames.</p><span class="how">custom CUDA kernel</span></div>
+      <div class="stage"><span class="label">03 detect</span><p>YOLO26n at 1280×736, replayed from a CUDA graph: one launch per frame instead of one per kernel.</p><span class="how">TensorRT · CUDA graph</span></div>
+      <div class="stage"><span class="label">04 track</span><p>Predict each track with a Kalman filter, pair detections to predictions in stages, update the lifecycle.</p><span class="how">Kalman · staged Hungarian</span></div>
+      <div class="stage"><span class="label">05 draw</span><p>The HUD on the video and the stats panel beside it, on the main thread.</p><span class="how">OpenCV · Dear ImGui</span></div>
+    </div>
+    <p class="pipe-note">Parallel trades delay for throughput: frames wait in the queues, so on the 640 CPU setup end-to-end delay went from about 37 ms to 147–159 ms on video files while throughput rose 1.23–1.57×. Tracks are unchanged: recordings came out byte-identical between modes.</p>
+
+    <div class="lifecycle">
+      <div class="state">
+        <svg viewBox="0 0 64 44" aria-hidden="true"><rect x="8" y="6" width="48" height="32" fill="none" stroke="#6b737d" stroke-width="1" stroke-dasharray="2 3"/></svg>
+        <span class="label">tentative</span>
+        <p>A new detection with no history. It has to be seen 3 frames running before it gets drawn, so one-frame noise never earns an ID.</p>
+      </div>
+      <div class="state">
+        <svg viewBox="0 0 64 44" aria-hidden="true"><path d="M8 16V6h10M46 6h10v10M56 28v10H46M18 38H8V28" fill="none" stroke="#3ee07a" stroke-width="2.5"/></svg>
+        <span class="label">tracked</span>
+        <p>Matched this frame. Solid corner brackets in the track's colour; colours step around the hue wheel by the golden ratio so neighbouring IDs look different.</p>
+      </div>
+      <div class="state">
+        <svg viewBox="0 0 64 44" aria-hidden="true"><rect x="8" y="6" width="48" height="32" fill="none" stroke="#ff6a00" stroke-width="3" stroke-dasharray="7 4"/></svg>
+        <span class="label">searching</span>
+        <p>The detector missed it. The Kalman filter keeps predicting, and a search gate around the prediction waits for it to come back with the same ID.</p>
+      </div>
+      <div class="state">
+        <svg viewBox="0 0 64 44" aria-hidden="true"><path d="M14 10l36 24M50 10L14 34" stroke="#6b737d" stroke-width="2"/></svg>
+        <span class="label">removed</span>
+        <p>Missing for 30 frames. Anything that comes back after that has to take a new ID, which is why even a perfect tracker has a ceiling below 100%.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="results">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="label">Measured</p>
+      <h2>What the benchmarks say</h2>
+      <p>Every number on this page comes from a committed write-up in <a href="https://github.com/Khriis-K/Tether/tree/main/docs/benchmarks"><code>docs/benchmarks/</code></a>, with its setup, raw tables and caveats. Timings are from one laptop (Ryzen AI 7 350, RTX 5070 Laptop GPU), Windows, headless, two rounds each unless noted; ranges are the spread across rounds.</p>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <span class="label">Crowds · MOT17 vs ByteTrack</span>
+        <h3>Matches a widely used tracker on the standard pedestrian benchmark</h3>
+        <p>Both trackers read the same YOLO26n detections and apply their own thresholds. 7 MOT17 train videos, scored with TrackEval.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Tracker · input</th><th class="n">HOTA ↑</th><th class="n">IDF1 ↑</th><th class="n">ID switches ↓</th></tr></thead>
+            <tbody>
+              <tr class="us"><td>Tether · 1280×736</td><td class="n">41.46</td><td class="n">49.38</td><td class="n">732</td></tr>
+              <tr><td>ByteTrack · 1280×736</td><td class="n">40.86</td><td class="n">48.63</td><td class="n">800</td></tr>
+              <tr class="dim"><td>Tether · 640</td><td class="n">33.13</td><td class="n">37.62</td><td class="n">529</td></tr>
+              <tr class="dim"><td>ByteTrack · 640</td><td class="n">33.46</td><td class="n">37.91</td><td class="n">549</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caveat"><b>Read it as "matches", not "beats".</b> These 7 videos are also the ones the settings were tuned on, with no held-out split, and the 0.60 HOTA margin is small. At 640 Tether is slightly behind on HOTA and IDF1. ByteTrack is Ultralytics' BYTETracker at its defaults. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/benchmarks/mot17-bytetrack.md">Write-up</a></p>
+      </div>
+
+      <div class="card">
+        <span class="label">Dropouts · Anti-UAV, labeled drone boxes</span>
+        <h3>Keeping a drone's ID when detections disappear</h3>
+        <p>Detections are the labeled boxes with failures added on purpose, so this tests the tracker, not the detector. An ID counts as kept only if its box overlaps the drone at IoU ≥ 0.5. 91 test clips, run once at the end; settings were tuned on val.</p>
+        <div class="bars" style="margin-top:8px">
+          <div class="bar-row"><div class="top"><span>20% of boxes deleted · ID kept</span><span class="mono">26.1% → 84.0%</span></div><div class="track"><div class="fill" style="width:84%;--c:var(--text)"></div><div class="fill" style="width:26.1%;--c:var(--dim)"></div><div class="tick" style="left:89.3%" data-l="goal 89.3"></div></div></div>
+          <div class="bar-row"><div class="top"><span>1 s gaps · recovered</span><span class="mono">27.2% → 88.9%</span></div><div class="track"><div class="fill" style="width:88.9%;--c:var(--text)"></div><div class="fill" style="width:27.2%;--c:var(--dim)"></div><div class="tick" style="left:80%" data-l="goal 80"></div></div></div>
+          <div class="bar-row"><div class="top"><span>0.5 s gaps · recovered</span><span class="mono">48.3% → 87.9%</span></div><div class="track"><div class="fill" style="width:87.9%;--c:var(--text)"></div><div class="fill" style="width:48.3%;--c:var(--dim)"></div></div></div>
+          <div class="bar-row"><div class="top"><span>0.25 s gaps · recovered</span><span class="mono">68.5% → 91.5%</span></div><div class="track"><div class="fill" style="width:91.5%;--c:var(--text)"></div><div class="fill" style="width:68.5%;--c:var(--dim)"></div></div></div>
+        </div>
+        <p class="note">Grey: the first tracker. White: the final one.</p>
+        <p class="caveat"><b>The ID-kept goal was missed by 5.3 points.</b> It's set relative to a ceiling, 94.0%, because a track forgotten after 30 frames must take a new ID. An oracle that knows there's only one drone reaches 93.3% on val, but a general rule that gets there wasn't found. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/benchmarks/antiuav-dropout.md">Write-up</a></p>
+      </div>
+
+      <div class="card">
+        <span class="label">Speed · shipped configuration</span>
+        <h3>From 127 to 195 FPS by moving one step onto the GPU</h3>
+        <p>YOLO26n at 1280×736 on TensorRT, parallel, on the Anti-UAV video clip. Profiling showed CPU frame prep was the slowest stage; one CUDA kernel fixed it.</p>
+        <div class="bars" style="margin-top:8px">
+          <div class="bar-row"><div class="top"><span>FPS, CPU prep</span><span class="mono">126.63–127.71</span></div><div class="track"><div class="fill" style="width:63.9%;--c:var(--dim)"></div><div class="tick" style="left:60%" data-l="goal 120"></div></div></div>
+          <div class="bar-row"><div class="top"><span>FPS, CUDA prep</span><span class="mono">195.45–195.86</span></div><div class="track"><div class="fill" style="width:97.9%;--c:var(--text)"></div><div class="tick" style="left:60%" data-l=""></div></div></div>
+          <div class="bar-row"><div class="top"><span>Worst 1% frame time, CUDA prep</span><span class="mono">6.49–6.57 ms</span></div><div class="track"><div class="fill" style="width:41.1%;--c:var(--text)"></div><div class="tick end" style="left:calc(100% - 2px)" data-l="limit 16 ms"></div></div></div>
+        </div>
+        <p class="note">Bars drawn to the top of each range; the FPS scale ends at 200.</p>
+        <p class="caveat"><b>Video files only.</b> MOT17-04, a folder of JPEGs, runs 65.46–65.67 FPS because decoding the images is the limit. Webcam delay in this configuration wasn't measured. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/benchmarks/cuda-prep.md">Write-up</a></p>
+      </div>
+
+      <div class="card">
+        <span class="label">Python → C++</span>
+        <h3>14× faster tracking, but only 1.08–1.20× end to end</h3>
+        <p>The C++ port reproduces the prototype exactly: same IDs and statuses on every frame of 462 real detection files. That meant copying even how SciPy breaks ties in the assignment solver.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Tracking step</th><th class="n">Python ms</th><th class="n">C++ ms</th><th class="n">Speedup</th></tr></thead>
+            <tbody>
+              <tr><td>MOT17 train</td><td class="n">2.521</td><td class="n">0.1785</td><td class="n">14.1×</td></tr>
+              <tr><td>Anti-UAV test</td><td class="n">0.172</td><td class="n">0.0049</td><td class="n">35.0×</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caveat"><b>Amdahl's law.</b> The whole-pipeline goal of 2× was missed: both pipelines ran the same CPU detector, 66–83% of a C++ frame, so even free tracking would cap the gain at 1.27–1.76×. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/benchmarks/cpp-pipeline-speed.md">Write-up</a></p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="label">Model size × input size · TensorRT, parallel, CPU prep</span>
+      <h3>Input size mattered more than model size</h3>
+      <p>At 640 the 1920×1080 MOT17 frames shrink 3× and the detector found 33.7% of people; at 1280×736 it found 54.6% at similar precision. The smallest model at the larger input beat the medium one at 640, and was the most accurate row that met both speed goals.</p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Model · input</th><th class="n">FPS</th><th class="n">P99 ms</th><th>Slowest stage</th><th class="n">HOTA</th><th class="n">IDF1</th></tr></thead>
+          <tbody>
+            <tr class="dim"><td>n · 640</td><td class="n">141.80–186.27</td><td class="n">6.77–9.47</td><td>capture</td><td class="n">32.74</td><td class="n">37.05</td></tr>
+            <tr class="dim"><td>m · 640</td><td class="n">105.43–106.05</td><td class="n">11.17–11.31</td><td>detect</td><td class="n">38.72</td><td class="n">44.70</td></tr>
+            <tr class="us"><td>n · 1280×736 (shipped)</td><td class="n">124.82–126.18</td><td class="n">9.17–10.45</td><td>prep</td><td class="n">41.55</td><td class="n">49.33</td></tr>
+            <tr class="dim"><td>s · 1280×736</td><td class="n">108.89–110.06</td><td class="n">10.99–11.08</td><td>detect</td><td class="n">44.86</td><td class="n">52.30</td></tr>
+            <tr class="dim"><td>m · 1280×736</td><td class="n">46.77–47.20</td><td class="n">24.46–24.62</td><td>detect</td><td class="n">46.90</td><td class="n">54.77</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caveat">Before CUDA prep, so the shipped row is prep-bound here; with the kernel it reaches 195.45–195.86 FPS. FP16 engines, which might bring s and m under the goal, weren't tried. MOT17 is the tuning set. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/benchmarks/model-size.md">Write-up</a></p>
+    </div>
+
+    <p class="note" style="margin-top:20px">Reproduced in Docker: one command ran every benchmark in 45.7 minutes on the same laptop through WSL 2, and every accuracy number matched the write-ups exactly. Timings differ, as expected on another OS and TensorRT version. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/benchmarks/docker-reproduction.md">Write-up</a></p>
+  </div>
+</section>
+
+<section id="scorecard">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="label">Targets set up front</p>
+      <h2>The scorecard, misses included</h2>
+      <p>The spec set these goals before the work was measured, and the drone model's before its one test run. Nothing here was re-tuned after seeing the result.</p>
+    </div>
+    <div class="filters" role="group" aria-label="Filter targets by outcome">
+      <button type="button" data-f="all" aria-pressed="true">all</button>
+      <button type="button" data-f="met" aria-pressed="false">met</button>
+      <button type="button" data-f="part" aria-pressed="false">partly</button>
+      <button type="button" data-f="missed" aria-pressed="false">missed</button>
+      <button type="button" data-f="unknown" aria-pressed="false">not measured</button>
+    </div>
+    <div class="score" id="score">
+      <div class="score-group">Speed</div>
+      <div class="score-row" data-s="part"><span class="st part">partly</span><span class="t">120+ FPS on video files</span><span class="r">195.45–195.86 on the Anti-UAV video clip; 65.46–65.67 on MOT17-04, a folder of JPEGs, where decoding is the limit</span></div>
+      <div class="score-row" data-s="part"><span class="st part">partly</span><span class="t">Worst 1% frame time under 16 ms</span><span class="r">6.49–6.57 ms on the Anti-UAV clip; 20.00–20.09 ms on MOT17-04</span></div>
+      <div class="score-row" data-s="unknown"><span class="st unknown">unknown</span><span class="t">Webcam delay under 50 ms, no dropped frames</span><span class="r">Not measured in the shipped configuration. On the CPU at 640, parallel dropped 0 of 300 frames at 83 ms; sequential had 37 ms but dropped 129</span></div>
+      <div class="score-row" data-s="met"><span class="st met">met</span><span class="t">C++ tracking step 10×+ faster than Python</span><span class="r">14.1× on MOT17, 35.0× on Anti-UAV</span></div>
+      <div class="score-row" data-s="missed"><span class="st missed">missed</span><span class="t">Whole C++ pipeline 2×+ faster than Python</span><span class="r">1.08–1.20×: both run the same CPU detector, which dominates</span></div>
+      <div class="score-row" data-s="part"><span class="st part">partly</span><span class="t">Parallel 1.5×+ faster than sequential</span><span class="r">1.57× on MOT17-04, 1.23–1.24× on the Anti-UAV clip, which was already at the detector's ceiling</span></div>
+      <div class="score-row" data-s="met"><span class="st met">met</span><span class="t">CUDA frame prep 3×+ faster on that step</span><span class="r">9.19–9.21× where it ships; 2.74–2.78× in one other setup (MOT17-04 at 640, sequential)</span></div>
+      <div class="score-row" data-s="met"><span class="st met">met</span><span class="t">TensorRT 1.5×+ faster than ONNX Runtime</span><span class="r">5.15–5.63× at 640, 10.01–10.44× at 1280×736. But it's GPU against CPU: ONNX Runtime's CUDA provider wasn't tried</span></div>
+      <div class="score-group">Tracking accuracy</div>
+      <div class="score-row" data-s="met"><span class="st met">met</span><span class="t">MOT17: HOTA within 2 of ByteTrack, IDF1 ≥, ID switches ≤</span><span class="r">All three at 1280×736. At 640, IDF1 is 0.3 behind</span></div>
+      <div class="score-row" data-s="missed"><span class="st missed">missed</span><span class="t">Anti-UAV, 20% deleted: ID kept ≥ 95% of the ceiling</span><span class="r">84.0% against 89.3%, 5.3 points short</span></div>
+      <div class="score-row" data-s="met"><span class="st met">met</span><span class="t">Anti-UAV, gaps up to 1 s: recovered ≥ 80%</span><span class="r">88.9%</span></div>
+      <div class="score-row" data-s="met"><span class="st met">met</span><span class="t">Python and C++ trackers give matching outputs</span><span class="r">Same IDs and statuses on every frame of 462 real files</span></div>
+      <div class="score-group">Drone model, one test run</div>
+      <div class="score-row" data-s="met"><span class="st met">met</span><span class="t">Recall ≥ 0.80, precision ≥ 0.90 on Anti-UAV test</span><span class="r">Recall 0.884, precision 0.975</span></div>
+      <div class="score-row" data-s="missed"><span class="st missed">missed</span><span class="t">End-to-end ID kept ≥ 0.95× the labeled-box row</span><span class="r">75.3% against 82.6% on the labels (0.911×)</span></div>
+      <div class="score-row" data-s="missed"><span class="st missed">missed</span><span class="t">≤ 8 of 86 birds, ≤ 4 detections in 2.25 min of empty sky</span><span class="r">19 of 86 birds; 190 detections, 174 of them on one lamp</span></div>
+      <div class="score-row" data-s="missed"><span class="st missed">missed</span><span class="t">Seraphim AP50 above the COCO model's 0.216</span><span class="r">0.164</span></div>
+      <div class="score-row" data-s="met"><span class="st met">met</span><span class="t">Speed in the shipped configuration</span><span class="r">195.59–198.63 FPS, P99 6.46–6.49 ms on an Anti-UAV val clip</span></div>
+    </div>
+    <p class="note" style="margin-top:14px">Full table with sources: <a href="https://github.com/Khriis-K/Tether#targets-what-was-met-and-what-wasnt">README scorecard</a> and <a href="https://github.com/Khriis-K/Tether/blob/main/docs/SPEC.md#targets">SPEC targets</a>.</p>
+  </div>
+</section>
+
+<section id="drone">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="label">Stage 5 · fine-tuned detector</p>
+      <h2>A drone detector, tested once</h2>
+      <p>The standard detector was never trained on drones and found 22.2% of them. A one-class YOLO26n was fine-tuned on footage from one test site (Anti-UAV), on a validation split that keeps whole recording sessions apart so near-identical frames can't leak. Its pass marks were written down before anyone looked at the test footage, then the test was run once.</p>
+    </div>
+    <div class="claims">
+      <div class="card can brackets">
+        <span class="label" style="color:var(--ok)">What it can claim</span>
+        <ul>
+          <li><b>It finds drones at that site.</b> On new flights from the same camera it spots the drone in 88.4% of frames, and 97.5% of what it flags is a drone. AP50 0.915 against the starting model's 0.402.</li>
+          <li><b>It's fast enough for real time.</b> 195.59–198.63 FPS in the shipped configuration, on one clip.</li>
+        </ul>
+      </div>
+      <div class="card cant brackets">
+        <span class="label" style="color:var(--accent)">What it can't claim yet</span>
+        <ul>
+          <li><b>Keeping the drone's ID.</b> 75.3% of test frames end to end, short of 95% of what the same tracker gets from hand labels (82.6%).</li>
+          <li><b>Ignoring things that aren't drones.</b> It flagged 19 of 86 bird photos, and made 190 detections in 2.25 minutes of empty sky, 174 on one lamp at night.</li>
+          <li><b>Working anywhere else.</b> On drone photos from other sources (Seraphim) it scored below the untrained model: AP50 0.164 against 0.216.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="caveat" style="margin-top:18px">So it's the detection and tracking part of a drone-defence system, measured on one site's footage, not a drone-defence system. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/benchmarks/drone-test.md">Test write-up</a> · <a href="https://github.com/Khriis-K/Tether/blob/main/docs/adr/0004-drone-detector-on-anti-uav.md">ADR 0004</a></p>
+  </div>
+</section>
+
+<section id="lessons">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="label">From docs/LESSONS.md</p>
+      <h2>What the bugs taught</h2>
+      <p>The project keeps a story for every problem worth remembering. These are the habits they added up to.</p>
+    </div>
+    <div class="playbook">
+      <div class="play"><h3>Check the ceiling upstream</h3><p>The first MOT17 score was low, and the tracker wasn't to blame: the detector found a third of the people. A tracker can't beat its detector, so measure what the input allows before tuning. That led to the 1280×736 input. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/LESSONS.md#the-first-mot17-score-was-low-and-the-tracker-wasnt-to-blame-6">Story</a></p></div>
+      <div class="play"><h3>Run the null case on your metric</h3><p>The first "ID kept" score could be faked by doing nothing. Asking what a useless tracker would score exposed it, and the IoU ≥ 0.5 rule went in. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/LESSONS.md#the-id-kept-score-could-be-faked-by-doing-nothing-8">Story</a></p></div>
+      <div class="play"><h3>Ablate, don't guess</h3><p>Tether made about 470 more ID switches than ByteTrack. Changing one thing at a time found the matching order was the cause: 1270 → 779 switches, 35.6 → 40.9 HOTA. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/LESSONS.md#tether-made-470-more-id-switches-than-bytetrack-22-23">Story</a></p></div>
+      <div class="play"><h3>Test where the fix can fail</h3><p>A change that helped drones hurt crowds. A second benchmark, checked per video and not just in total, is what showed it. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/LESSONS.md#the-fix-for-drones-broke-crowds-29-35">Story</a></p></div>
+      <div class="play"><h3>Profile before you optimise</h3><p>At 640, Nsight showed frame prep wasn't the bottleneck; kernel launches were, so a CUDA graph came first. At 1280×736 prep became the slowest stage, and only then was the CUDA kernel worth writing. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/LESSONS.md#frame-prep-wasnt-the-bottleneck-kernel-launches-were-15">Story</a></p></div>
+      <div class="play"><h3>Set the targets before the test</h3><p>Val already said 99% for the drone model, so the test targets were set with reasons other than the val score, then the test was run once. Four of six failed, and that's on the page. <a href="https://github.com/Khriis-K/Tether/blob/main/docs/LESSONS.md#setting-targets-when-val-already-says-99-47">Story</a></p></div>
+    </div>
+  </div>
+</section>
+
+<section id="stack">
+  <div class="wrap">
+    <div class="sec-head"><p class="label">Built with</p><h2>Tech stack</h2></div>
+    <div class="stack">
+      <div><span class="label">C++ / GPU</span><p>C++20, CMake, CUDA, TensorRT 11, ONNX Runtime, OpenCV, Dear ImGui, NVTX + Nsight Systems</p></div>
+      <div><span class="label">Python prototype</span><p>NumPy, SciPy, ONNX Runtime, OpenCV, Ultralytics (export, fine-tuning, ByteTrack baseline)</p></div>
+      <div><span class="label">Evaluation</span><p>TrackEval (HOTA, IDF1, ID switches), MOT17, Anti-UAV, Seraphim, Drone-vs-Bird; AP50, recall and precision scorers</p></div>
+      <div><span class="label">Testing &amp; repro</span><p>pytest, GoogleTest + ctest, a Python-vs-C++ parity check on every build, Docker on NVIDIA's TensorRT image</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="limits">
+  <div class="wrap">
+    <div class="sec-head"><p class="label">Stated up front</p><h2>Limitations</h2></div>
+    <ul class="limits">
+      <li><b>MOT17 is tuning data.</b> There's no held-out split, so the ByteTrack comparison is "matches", not "beats".</li>
+      <li><b>Sparse scenes can swap IDs.</b> With nobody else around, a person who walks out can hand their ID to a similar-size newcomer within about a second. A real fix needs appearance re-ID.</li>
+      <li><b>The fast path is opt-in.</b> Defaults stay ONNX Runtime on the CPU, CPU prep and sequential, so Tether runs without a GPU, but there the 1280×736 model is slow (11.9 FPS sequential on the Anti-UAV clip).</li>
+      <li><b>One machine.</b> All timings come from one laptop and one GPU, and the CUDA kernel is compiled for that GPU's architecture by default.</li>
+      <li><b>The drone model knows one site.</b> One camera, two days of footage; it does worse than its starting model elsewhere.</li>
+      <li><b>A portfolio project, not a product.</b> Not for safety-critical use.</li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <h2>Read the code, the write-ups and the misses</h2>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/Khriis-K/Tether">Khriis-K/Tether</a>
+      <a class="btn btn-ghost" href="https://github.com/Khriis-K/Tether/blob/main/docs/LESSONS.md">LESSONS.md</a>
+      <a class="btn btn-ghost" href="https://github.com/Khriis-K/Tether/tree/main/docs/benchmarks">Benchmarks</a>
+    </div>
+    <pre>tether-pipeline VIDEO --runtime tensorrt --prep cuda --pipeline parallel --show</pre>
+    <div class="credits">
+      <p>Pedestrian footage: <a href="https://motchallenge.net/data/MOT17/">MOT17</a>, CC BY-NC-SA 3.0.</p>
+      <p>Drone footage: <a href="https://github.com/ZhaoJ9014/Anti-UAV">Anti-UAV</a>, MIT License, © 2020 Zhao Jian.</p>
+      <p>Detector: YOLO26 by Ultralytics, AGPL-3.0. Tether is AGPL-3.0 to match.</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Scorecard filter
+(() => {
+  const btns = document.querySelectorAll('.filters button');
+  const rows = document.querySelectorAll('#score .score-row');
+  const groups = document.querySelectorAll('#score .score-group');
+  btns.forEach(b => b.addEventListener('click', () => {
+    btns.forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    const f = b.dataset.f;
+    rows.forEach(r => { r.hidden = f !== 'all' && r.dataset.s !== f; });
+    groups.forEach(g => {
+      let n = g.nextElementSibling, any = false;
+      while (n && !n.classList.contains('score-group')) { if (!n.hidden) any = true; n = n.nextElementSibling; }
+      g.hidden = !any;
+    });
+  }));
+})();
+
+// Toy tracker. Illustrates the idea only; it is not Tether's code.
+(() => {
+  const W = 960, H = 600;
+  const PILLAR = { x: 452, w: 86 };
+  const CONFIRM_HITS = 3, MAX_SEARCH = 30, TRAIL = 40;
+  const ACCENT = '#ff6a00', INK = '#101214';
+  const GOLDEN = 0.618033988749895;
+
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  const simEl = document.getElementById('sim');
+  const drop = document.getElementById('sim-drop');
+  const dropOut = document.getElementById('sim-drop-out');
+  const searchBox = document.getElementById('sim-search');
+  const pauseBtn = document.getElementById('sim-pause');
+  const out = { ids: document.getElementById('r-ids'), sw: document.getElementById('r-sw'), search: document.getElementById('r-search') };
+
+  // Same hue rule as track_color() in cpp/src/tether/hud.cpp: golden-ratio steps, skipping the accent's band.
+  function trackColor(id) {
+    const h = ((0.12 + 0.9 * ((id * GOLDEN) % 1)) % 1) * 6, s = 0.85;
+    const i = Math.floor(h) % 6, f = h - Math.floor(h);
+    const p = 1 - s, q = 1 - s * f, t = 1 - s * (1 - f);
+    const [r, g, b] = [[1, t, p], [q, 1, p], [p, 1, t], [p, q, 1], [t, p, 1], [1, p, q]][i];
+    return `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+  }
+
+  let seed = 7;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const gauss = () => (rand() + rand() + rand() - 1.5) * 1.4;
+
+  let objects, tracks, nextId, frame, switches, lastId;
+
+  function reset() {
+    seed = 7;
+    objects = [];
+    for (let k = 0; k < 5; k++) {
+      const w = 46 + rand() * 40, h = w * (1.5 + rand() * 0.6);
+      const dir = k % 2 ? -1 : 1;
+      objects.push({
+        g: k, w, h,
+        x: 60 + rand() * (W - 120), y: 60 + h / 2 + rand() * (H - 120 - h),
+        vx: dir * (1.8 + rand() * 1.8), vy: (rand() - 0.5) * 1.2,
+      });
+    }
+    tracks = []; nextId = 1; frame = 0; switches = 0; lastId = new Map();
+  }
+
+  function stepObjects() {
+    for (const o of objects) {
+      o.vy += (rand() - 0.5) * 0.08;
+      o.vy = Math.max(-1.2, Math.min(1.2, o.vy));
+      o.x += o.vx; o.y += o.vy;
+      if (o.x < o.w / 2 + 8 || o.x > W - o.w / 2 - 8) o.vx *= -1;
+      if (o.y < o.h / 2 + 8 || o.y > H - o.h / 2 - 8) o.vy *= -1;
+    }
+  }
+
+  function detect() {
+    const p = Number(drop.value) / 100;
+    const dets = [];
+    for (const o of objects) {
+      const hidden = o.x > PILLAR.x && o.x < PILLAR.x + PILLAR.w;
+      if (hidden || rand() < p) continue;
+      dets.push({ g: o.g, x: o.x + gauss(), y: o.y + gauss(), w: o.w + gauss(), h: o.h + gauss() });
+    }
+    return dets;
+  }
+
+  // Constant-velocity Kalman filter on one axis: state [position, velocity].
+  const kf = (z) => ({ x: z, v: 0, p00: 25, p01: 0, p11: 25 });
+  function kfPredict(k) {
+    const q = 0.05;
+    k.x += k.v;
+    k.p00 += 2 * k.p01 + k.p11 + q; k.p01 += k.p11; k.p11 += q;
+  }
+  function kfUpdate(k, z) {
+    const R = 4, S = k.p00 + R, K0 = k.p00 / S, K1 = k.p01 / S, y = z - k.x;
+    k.x += K0 * y; k.v += K1 * y;
+    const p00 = k.p00, p01 = k.p01;
+    k.p00 = (1 - K0) * p00; k.p01 = (1 - K0) * p01; k.p11 -= K1 * p01;
+  }
+
+  const box = t => ({ x: t.kx.x, y: t.ky.x, w: t.w, h: t.h });
+  function iou(a, b) {
+    const ix = Math.max(0, Math.min(a.x + a.w / 2, b.x + b.w / 2) - Math.max(a.x - a.w / 2, b.x - b.w / 2));
+    const iy = Math.max(0, Math.min(a.y + a.h / 2, b.y + b.h / 2) - Math.max(a.y - a.h / 2, b.y - b.h / 2));
+    const i = ix * iy;
+    return i / (a.w * a.h + b.w * b.h - i);
+  }
+
+  // Greedy: best pair first, each track and detection used once.
+  function greedy(ts, ds, score, min) {
+    const pairs = [];
+    for (const t of ts) for (const d of ds) { const s = score(t, d); if (s >= min) pairs.push([s, t, d]); }
+    pairs.sort((a, b) => b[0] - a[0]);
+    const usedT = new Set(), usedD = new Set(), out = [];
+    for (const [, t, d] of pairs) {
+      if (usedT.has(t) || usedD.has(d)) continue;
+      usedT.add(t); usedD.add(d); out.push([t, d]);
+    }
+    return out;
+  }
+
+  function track(dets) {
+    for (const t of tracks) { kfPredict(t.kx); kfPredict(t.ky); }
+    // Stage 1: live tracks (tracked and tentative) by overlap with the prediction.
+    const live = tracks.filter(t => t.state !== 'searching');
+    const m1 = greedy(live, dets, (t, d) => iou(box(t), d), 0.2);
+    const used = new Set(m1.map(([, d]) => d));
+    // Stage 2: searching tracks, by distance inside a gate that grows with time missing, capped.
+    const lost = tracks.filter(t => t.state === 'searching');
+    const rest = dets.filter(d => !used.has(d));
+    const m2 = greedy(lost, rest, (t, d) => {
+      const dist = Math.hypot(t.kx.x - d.x, t.ky.x - d.y);
+      const gate = Math.min(0.5 * Math.max(t.w, t.h) + 5 * t.missed, 1.6 * Math.max(t.w, t.h));
+      return dist < gate ? 1 - dist / gate : -1;
+    }, 0);
+    const matched = new Set();
+    for (const [t, d] of [...m1, ...m2]) {
+      kfUpdate(t.kx, d.x); kfUpdate(t.ky, d.y);
+      t.w += 0.3 * (d.w - t.w); t.h += 0.3 * (d.h - t.h);
+      t.hits++; t.missed = 0; matched.add(t); used.add(d);
+      if (t.state === 'tentative' && t.hits >= CONFIRM_HITS) { t.state = 'tracked'; t.id = nextId++; }
+      else if (t.state === 'searching') t.state = 'tracked';
+      if (t.id) {
+        const prev = lastId.get(d.g);
+        if (prev !== undefined && prev !== t.id) switches++;
+        lastId.set(d.g, t.id);
+      }
+    }
+    const searchOn = searchBox.checked;
+    tracks = tracks.filter(t => {
+      if (matched.has(t)) return true;
+      t.missed++;
+      if (t.state === 'tentative' || !searchOn) return false;
+      t.state = 'searching';
+      return t.missed <= MAX_SEARCH;
+    });
+    for (const d of dets) if (!used.has(d)) {
+      tracks.push({ kx: kf(d.x), ky: kf(d.y), w: d.w, h: d.h, hits: 1, missed: 0, state: 'tentative', id: 0, trail: [] });
+    }
+    for (const t of tracks) if (t.id) { t.trail.push([t.kx.x, t.ky.x]); if (t.trail.length > TRAIL) t.trail.shift(); }
+  }
+
+  function brackets(b, color) {
+    const x0 = b.x - b.w / 2, y0 = b.y - b.h / 2, x1 = x0 + b.w, y1 = y0 + b.h, L = Math.min(b.w, b.h) * 0.28;
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 + L); ctx.lineTo(x0, y0); ctx.lineTo(x0 + L, y0);
+    ctx.moveTo(x1 - L, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y0 + L);
+    ctx.moveTo(x1, y1 - L); ctx.lineTo(x1, y1); ctx.lineTo(x1 - L, y1);
+    ctx.moveTo(x0 + L, y1); ctx.lineTo(x0, y1); ctx.lineTo(x0, y1 - L);
+    ctx.stroke();
+  }
+  function chip(text, x, y, bg) {
+    ctx.font = '600 22px "IBM Plex Mono", ui-monospace, monospace';
+    const w = ctx.measureText(text).width + 14;
+    const cx = Math.max(2, Math.min(W - w - 2, x));
+    const cy = Math.max(2, y - 31);
+    ctx.fillStyle = bg; ctx.fillRect(cx, cy, w, 29);
+    ctx.fillStyle = INK; ctx.fillText(text, cx + 7, cy + 22);
+  }
+
+  function draw() {
+    ctx.fillStyle = '#0d0f11'; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1; ctx.setLineDash([]);
+    for (let x = 0; x <= W; x += 48) { ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke(); }
+    for (let y = 0; y <= H; y += 48) { ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke(); }
+
+    // The scene: grey figures.
+    for (const o of objects) {
+      ctx.fillStyle = '#2b3036';
+      ctx.beginPath(); ctx.roundRect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h, 8); ctx.fill();
+    }
+
+    // Trails and tracks.
+    for (const t of tracks) {
+      if (!t.id) continue;
+      const c = t.state === 'searching' ? ACCENT : trackColor(t.id);
+      ctx.setLineDash([]); ctx.lineWidth = 2.5;
+      for (let i = 1; i < t.trail.length; i++) {
+        ctx.strokeStyle = c; ctx.globalAlpha = (i / t.trail.length) * 0.8;
+        ctx.beginPath(); ctx.moveTo(...t.trail[i - 1]); ctx.lineTo(...t.trail[i]); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // The pillar hides whatever passes behind it, so it draws over the figures and trails.
+    ctx.fillStyle = '#1a1e22'; ctx.fillRect(PILLAR.x, 0, PILLAR.w, H);
+    ctx.save(); ctx.beginPath(); ctx.rect(PILLAR.x, 0, PILLAR.w, H); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 2;
+    for (let k = -H; k < PILLAR.w + H; k += 16) { ctx.beginPath(); ctx.moveTo(PILLAR.x + k, 0); ctx.lineTo(PILLAR.x + k - H, H); ctx.stroke(); }
+    ctx.restore();
+    ctx.fillStyle = '#6b737d'; ctx.font = '500 14px "IBM Plex Mono", ui-monospace, monospace';
+    ctx.save(); ctx.translate(PILLAR.x + PILLAR.w / 2 + 5, H / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('OCCLUDER', 0, 0); ctx.restore();
+
+    for (const t of tracks) {
+      if (!t.id) continue;
+      const b = box(t);
+      if (t.state === 'searching') {
+        ctx.strokeStyle = ACCENT; ctx.lineWidth = 3.5; ctx.setLineDash([12, 7]);
+        ctx.strokeRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h);
+        chip(`${t.id} missing ${t.missed}`, b.x - b.w / 2, b.y - b.h / 2, ACCENT);
+      } else {
+        const c = trackColor(t.id);
+        brackets(b, c);
+        ctx.strokeStyle = c; ctx.lineWidth = 1.2; ctx.setLineDash([5, 4]);
+        ctx.strokeRect(b.x + t.kx.v - b.w / 2, b.y + t.ky.v - b.h / 2, b.w, b.h);
+        chip(String(t.id), b.x - b.w / 2, b.y - b.h / 2, c);
+      }
+    }
+    ctx.setLineDash([]);
+  }
+
+  function readout() {
+    out.ids.textContent = nextId - 1;
+    out.sw.textContent = switches;
+    out.search.textContent = tracks.filter(t => t.state === 'searching').length;
+  }
+
+  function step() { frame++; stepObjects(); track(detect()); }
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let paused = reduced, visible = true, last = 0, acc = 0;
+  function setPaused(p) { paused = p; pauseBtn.textContent = p ? 'Play' : 'Pause'; simEl.classList.toggle('paused', p); }
+  function loop(ts) {
+    const dt = Math.min(100, ts - last); last = ts;
+    if (!paused && visible) {
+      acc += dt;
+      while (acc >= 1000 / 30) { step(); acc -= 1000 / 30; }
+      draw(); readout();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  drop.addEventListener('input', () => { dropOut.value = drop.value + '%'; });
+  pauseBtn.addEventListener('click', () => setPaused(!paused));
+  document.getElementById('sim-reset').addEventListener('click', () => { reset(); for (let i = 0; i < 4; i++) step(); draw(); readout(); });
+  new IntersectionObserver(es => { visible = es[0].isIntersecting; }).observe(canvas);
+
+  reset();
+  // Warm up a few frames so a paused (reduced-motion) start still shows tracks.
+  for (let i = 0; i < 40; i++) step();
+  setPaused(paused);
+  document.fonts.ready.then(() => { draw(); readout(); });
+  draw(); readout();
+  requestAnimationFrame(t => { last = t; requestAnimationFrame(loop); });
+})();
+</script>
+</body>
+</html>
