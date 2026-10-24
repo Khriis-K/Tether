@@ -73,8 +73,9 @@ std::vector<Track> Tracker::update(const std::vector<Detection>& input) {
   for (const auto& d : input)
     if (d.score >= settings_.min_score) detections.push_back(d);
   size_t high_count = detections.size();
+  double low_score = settings_.low_score_ratio * settings_.min_score;
   for (const auto& d : input)
-    if (LOW_SCORE < d.score && d.score < settings_.min_score) detections.push_back(d);
+    if (low_score < d.score && d.score < settings_.min_score) detections.push_back(d);
 
   // Every track's filter was stepped forward at the end of the last update, so
   // its box is already the prediction for this frame.

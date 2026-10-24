@@ -113,7 +113,7 @@ It is built in two passes: a Python prototype to get the tracking logic right, t
 59. As a developer, I want a val split made of whole recording sessions, so that the detector is never tuned on near-copies of its own training footage.
 60. As a developer, I want to score any detector on Anti-UAV clips (AP50, recall, precision and F1 at a threshold, recall by box size, false alarms per minute on drone-absent frames), so that I can compare the pretrained model and the fine-tuned one on the same footing.
 61. As a developer, I want a single-class drone model fine-tuned on Anti-UAV, used by any tool through `--model`, so that Tether finds drones itself while the COCO model and every MOT17 result stay as they are.
-62. As a developer, I want the tracker scored on the drone model's own detections, next to the labeled-box ceiling, so that I can see what a real detector costs.
+62. As a developer, I want the tracker scored on the drone model's own detections, next to the same clips' labeled boxes, so that I can see what a real detector costs.
 63. As a developer, I want the detector scored on a dataset it never trained on, and on images with birds and no drones, so that I know whether it generalizes and how often it calls something else a drone.
 64. As a viewer, I want the HUD and stats panel to show the drone model's class name, so that a drone isn't labeled "person".
 
@@ -211,10 +211,49 @@ All speed targets are for the final C++ version running the shipped configuratio
 - Prediction error during gaps: reported as a result, not pass/fail.
 
 **Drone detector** (stage 5, ADR 0004)
-- Speed: the drone model in the shipped configuration meets the speed targets above (120+ FPS, P99 under 16 ms) on the Anti-UAV clip.
-- Accuracy targets are set from val results before test is run (#47), each with a reason other than the val score itself. Until then, every number is reported against two references: the pretrained COCO YOLO26n scored class-agnostically (the "before" row), and the labeled-box tracking results (the ceiling).
+- Speed: the drone model in the shipped configuration meets the speed targets above (120+ FPS, P99 under 16 ms) on an Anti-UAV clip. Met in #46: 195.59–198.63 FPS and P99 6.46–6.49 ms on the first val clip, since the earlier speed clip is in test (`docs/benchmarks/drone-speed.md`).
+- Every number is reported against two references: the pretrained COCO YOLO26n scored class-agnostically (the "before" row), and the labeled-box tracking results (a reference, not a strict ceiling; see End-to-end tracking below).
 - Scoring: a detection is a hit at IoU ≥ 0.5 with the labeled box. Models are compared on AP50. Recall, precision and F1 are reported at the threshold with the best F1 on the session-disjoint val, frozen before test.
-- Reported, not pass/fail unless #47 says otherwise: transfer to Seraphim test (Anti-UAV frames removed), the share of Drone-vs-Bird bird images with a false drone, and false alarms per minute on Anti-UAV frames with no drone.
+- End-to-end tracking: the tracker runs on the detector's own detections (class-agnostic, nothing deleted on top) and is scored with the dropout tests' ID-kept rule on every frame where the drone is labeled, so the detector's misses count against it. The same clips' labeled boxes are run beside it. The tracker's cutoff is the detector's operating threshold, and its low-score band's floor is 0.4 × the cutoff (0.1 at the default 0.25). See `docs/benchmarks/drone-tracking.md` (#44).
+
+**Drone detector accuracy targets** (set from val before test, #47; full reasoning in ADR 0004, "Accuracy targets")
+
+The drone model `yolo26n_drone_1280x736` at the frozen threshold 0.352, TensorRT, scores saved down to 0.01, scored once on test in #48. Val chose the epoch, the threshold and the tracker's cutoff, and it's one site and one camera. Even on labeled boxes, the tracker scores 87.0% on val and 82.6% on test. So no target is set just under its val score. Each one rests on something else, stated with it.
+- **Detector recall on Anti-UAV test: ≥ 0.80** (pass/fail).
+  - Why: the dropout test's 20% deletion is the miss rate the tracker is specified to cope with, so a detector at ≥ 0.80 keeps it inside that regime.
+  - Val: 0.992 (`docs/benchmarks/drone-model.md`). COCO: 0.142 at 0.25 (`docs/benchmarks/drone-coco-baseline.md`).
+  - Passing doesn't show the misses are spread out like random deletions. The ID-kept target catches runs of misses.
+- **Detector precision on Anti-UAV test: ≥ 0.90** (pass/fail).
+  - Why: that's at most about 0.09–0.11 false boxes per frame, and a false box needs 3 hits in a row to become a track.
+  - Val: 0.995 (`drone-model.md`). COCO: 0.410 at 0.25.
+  - Passing says nothing about empty sky or birds.
+- **AP50 on Anti-UAV test: reported, no separate target.** The two targets above already imply AP50 ≥ 0.72 (0.80 × 0.90 under the precision envelope). Val: 0.995, against COCO's 0.228 (`drone-model.md`).
+- **End-to-end ID kept on Anti-UAV test: ≥ 0.95 × the labeled-box row on the same clips, in the same run** (pass/fail). The clips where the detector beats the labels are reported beside it, along with the reachable ceiling.
+  - Why: it's the dropout test's relative rule applied to a real detector. It's relative because test is harder on labels alone.
+  - The labeled-box row is a reference, not a ceiling. On val the drone model beat it on 4 clips where the labels lose the drone, so passing doesn't prove the detector is near the best possible.
+  - Val: 89.7%, against 87.0% on labels (`docs/benchmarks/drone-tracking.md`).
+- **Bird false-alarm share: ≤ 8 of the 86 Drone-vs-Bird bird images (≤ 10%)** (pass/fail, coarse). A coarse bar that only catches a gross failure.
+  - Resolution: one image is about 1.2 points, the noise is about ±6 points, and the images cluster in a few videos.
+  - Val: none. COCO: 96.5% at 0.25 (`docs/benchmarks/drone-transfer-sets.md`).
+  - Passing doesn't show the model can tell a distant bird from a distant drone.
+- **Empty-sky false alarms on Anti-UAV test: ≤ 4 detections in its 2.25 minutes (≤ 2 per minute)** (pass/fail, coarse).
+  - Resolution: one alarm is about 0.44 per minute, counted as detections, not tracks, so the bar of 4 is 1.8 per minute. 4 lets one short false object pass.
+  - Val: 0 in 0.50 min, partly by construction, since the 2 s rule was sized on val's furthest drone-absent detection (36 frames against the 40-frame margin) (`drone-transfer-sets.md`). COCO at 0.066: 17.9 per minute.
+  - Passing covers one site's empty sky only.
+- **Transfer to Seraphim test: AP50 above the COCO model's 0.216 on the same 8,349 images, runtime and floor** (pass/fail). Recall and precision at 0.352 are reported beside it.
+  - Why it's relative to COCO: Seraphim mixes real, marketing and synthetic images, padded to 640×640, so an absolute bar has nothing to stand on. Beating the model it was fine-tuned from is the minimum for "it learned drones, not the site". A failure makes training on Seraphim the next experiment.
+  - Val: none (`drone-transfer-sets.md`).
+- **Recall on tiny and small drones: reported, no target.** Val has 8 tiny and 12 small boxes. The drone model finds 0 of 8 and 3 of 12 (`drone-model.md`), too few to judge.
+
+**Result on test (#48, run once; `docs/benchmarks/drone-test.md`):**
+- recall 0.884: **met**;
+- precision 0.975: **met**;
+- AP50 0.915 (COCO 0.402);
+- ID kept 75.3% against 82.6% on the labels, 0.911 ×: **missed**;
+- birds 19 of 86: **missed**;
+- empty sky 190 detections in 2.25 min: **missed**;
+- Seraphim AP50 0.164 against COCO's 0.216: **missed**;
+- tiny 0 of 39, small 397 of 823.
 
 **Upgrade payoffs**
 - Tracking step, C++ vs. Python: 10x+ faster.

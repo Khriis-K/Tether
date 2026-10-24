@@ -6,6 +6,22 @@ Real-time multi-object tracker in C++ that keeps stable IDs on fast-moving and t
 
 *MOT17-09, recorded with `tether-pipeline --record` in the shipped configuration. Click for the full video. Each person gets a colour and an ID; the trail is where they've been and the thin dashed box is where the tracker expects them next. A thick orange dashed box is a person the detector lost, which the tracker is still searching for. Video: [MOT17](https://motchallenge.net/data/MOT17/) (CC BY-NC-SA 3.0).*
 
+## In short
+
+Tether follows moving objects in video, people or drones, and keeps a steady ID on each one, even when it's briefly hidden or the detector misses it for a moment. It runs in real time on a laptop GPU. It's a portfolio project, built and measured on one laptop, not a product.
+
+**What works**
+- **It's fast.** About 195 frames per second on a video file, against a goal of 120. A typical camera sends 30.
+- **It tracks people as well as a widely used open-source tracker.** On MOT17, the standard pedestrian benchmark, it matches ByteTrack on all three agreed scores at the settings it ships with.
+- **The new drone detector finds drones at the site it was trained on.** On new flights there, it spots the drone in 88.4% of frames, and 97.5% of what it flags really is a drone. The general-purpose detector it started from spotted 22.2%.
+
+**What doesn't, yet**
+- **Holding on to a drone's ID.** When detections drop out, it keeps the drone's ID less often than its goal: 84.0% against 89.3% when a fifth of the detections are deleted on purpose, and 75.3% with the drone detector's own detections, short of that test's goal too.
+- **The drone detector only knows one place.** On drone photos from other sources it does worse than the detector it started from, and it mistakes some birds and a lamp for drones.
+- **A few goals weren't met or measured.** The delay on a live webcam hasn't been measured in the final setup, and a folder of JPEG images runs below the speed goal because decoding the images is the bottleneck.
+
+Every goal, met or missed, is in the [scorecard below](#targets-what-was-met-and-what-wasnt). The story behind each result is in [LESSONS.md](docs/LESSONS.md).
+
 ## What it is
 
 A pretrained YOLO26n detector finds objects in each frame, and a hand-written tracker links them over time: a Kalman filter predicts where each object goes next, staged Hungarian matching pairs detections with those predictions, and a track lifecycle (tentative → tracked → searching → removed) keeps an ID alive through short blockages.
@@ -34,6 +50,11 @@ The spec ([docs/SPEC.md](docs/SPEC.md#targets)) set these goals up front. Speed 
 | CUDA vs CPU frame prep: 3×+ on that step | 9.19–9.21× in the shipped configuration; 2.74–2.78× in one other (MOT17-04 at 640, sequential) | Yes where it ships |
 | TensorRT vs ONNX Runtime: 1.5×+ on the model run | 5.15–5.63× at 640, 10.01–10.44× at 1280×736 | Yes, but it's GPU against CPU (see below) |
 | Python and C++ trackers give matching outputs | Same IDs and statuses on every frame of 462 real files | Yes |
+| Drone model on Anti-UAV test, at its frozen threshold: recall ≥ 0.80, precision ≥ 0.90 | Recall 0.884, precision 0.975 | Yes |
+| Drone model end to end: ID kept ≥ 0.95 × the labeled-box row on the same test clips | 75.3% against 82.6% on the labels (0.911×) | **No** |
+| Drone model false alarms: ≤ 8 of 86 bird images, ≤ 4 detections in 2.25 min of empty sky | 19 of 86 birds; 190 detections, 174 of them on one lamp | **No** |
+| Drone model transfer: Seraphim AP50 above the COCO model's 0.216 | 0.164 | **No** |
+| Drone model speed in the shipped configuration (120+ FPS, P99 under 16 ms) | 195.59–198.63 FPS, P99 6.46–6.49 ms on an Anti-UAV val clip | Yes |
 
 ## Benchmarks
 
@@ -65,6 +86,21 @@ Detections are the labeled drone boxes with failures added on purpose, so this t
 | 1 s gaps recovered | 27.2% | **88.9%** | ≥ 80%: met |
 
 The target is relative to a ceiling because a track forgotten after its 30-frame search must take a new ID, so even a perfect tracker can keep only 94.0% on test ([antiuav-ceiling.md](docs/benchmarks/antiuav-ceiling.md)). Most of the remaining gap is re-association: an oracle that knows there's only one drone reaches 93.3% on val, but a general rule that gets there hasn't been found ([antiuav-single-target.md](docs/benchmarks/antiuav-single-target.md)).
+
+### Drone detection: a drone-only detector, tested once
+
+The standard detector was never trained on drones. Stage 5 trained a separate drone-only version, `yolo26n_drone_1280x736`, on footage from one test site (Anti-UAV). Its pass marks were set before anyone looked at the final test footage, and the final test was run once, so the results couldn't be tuned to it ([ADR 0004](docs/adr/0004-drone-detector-on-anti-uav.md), [drone-test.md](docs/benchmarks/drone-test.md)).
+
+What it can claim:
+- **It finds drones at that site.** On new flights filmed by the same camera, it spots the drone in 88.4% of frames, and 97.5% of what it flags is a drone. The general-purpose detector it started from (`yolo26n_1280x736`, counting anything it found as a drone) spotted 22.2%, and 75.7% of its flags were right.
+- **It's fast enough for real time.** 195.59–198.63 frames per second on one laptop GPU (RTX 5070 Laptop), measured on one clip.
+
+What it can't claim yet:
+- **Keeping the drone's ID.** Tracking from its own detections, it keeps the drone's ID on 75.3% of test frames. The pass mark was 95% of what the same tracker gets from the hand-labeled boxes (82.6%), and it fell short.
+- **Ignoring things that aren't drones.** It flagged a drone in 19 of 86 bird photos. In 2.25 minutes of empty sky at the site it made 190 false detections, 174 of them on one lamp in a night clip.
+- **Working anywhere else.** On a mixed set of drone photos from other sources (Seraphim), it scored below the untrained detector: 0.164 against 0.216 on the standard detection score (AP50).
+
+So it's the detection and tracking part of a drone-defence system, measured on one site's footage, not a drone-defence system.
 
 ### Python vs C++
 
@@ -248,6 +284,17 @@ tether-pipeline VIDEO --runtime tensorrt --prep cuda --pipeline parallel
 `--runtime tensorrt` loads the engine next to the model: `models/yolo26n_1280x736.onnx` (the default, also `--model-size n`; `s` and `m` pick `yolo26s_1280x736` and `yolo26m_1280x736`) loads `models/yolo26n_1280x736.engine`. An engine only runs on the GPU model and TensorRT version that built it, and only at the input size it was built for, so engines stay out of git (`*.engine`, `*.plan`) and each model and input size needs its own (rebuild it when the ONNX file changes too; the pipeline doesn't check): `models/yolo26n.onnx` (640) becomes `models/yolo26n.engine` the same way. TensorRT 11 takes its precision from the model, float32 here. `--noTF32` keeps it plain float32: `trtexec` otherwise allows TF32, which moved 0.66–1.05% of scores on MOT17-04 by more than the agreement tolerance allows, while saving at most 0.341 ms a frame.
 
 TensorRT replays the engine from a CUDA graph captured at start-up, one launch per frame instead of one per kernel; `--no-cuda-graph` turns that off. `--prep cuda` (with `--runtime tensorrt`) prepares each frame on the GPU instead of the CPU; `--prep cpu` is the default, and the only choice for ONNX Runtime.
+
+#### Drone model
+
+`models/yolo26n_drone_1280x736.onnx` is YOLO26n at 1280×736 fine-tuned on Anti-UAV to find one class, drone ([ADR 0004](docs/adr/0004-drone-detector-on-anti-uav.md), [docs/benchmarks/drone-model.md](docs/benchmarks/drone-model.md)). It's a separate model: the COCO model stays the default. Its weights stay out of git, so train and export it with `tools/train_drone.py` (see its docstring), build its engine like the COCO one, and pass it with `--model`:
+
+```
+trtexec --onnx=models/yolo26n_drone_1280x736.onnx --saveEngine=models/yolo26n_drone_1280x736.engine --noTF32 --skipInference
+tether-pipeline VIDEO --model models/yolo26n_drone_1280x736.onnx --runtime tensorrt --prep cuda --pipeline parallel --show
+```
+
+The stats panel names each track's class from the model's ONNX metadata, so the drone model's tracks read "drone" and the COCO model's read COCO's names, as before. On TensorRT the metadata is read from the `.onnx` file beside the engine; with only the engine, pass `--class-names drone`. Its speed in the shipped configuration: [docs/benchmarks/drone-speed.md](docs/benchmarks/drone-speed.md). The tracker inside `tether-pipeline` uses its default score cutoff, 0.25. The drone model's val-tuned cutoff, 0.352, is a `tether-track --min-score` setting for scoring dumped detections ([docs/benchmarks/drone-tracking.md](docs/benchmarks/drone-tracking.md)). Its one test run, against the targets set before it (two pass, four miss): [docs/benchmarks/drone-test.md](docs/benchmarks/drone-test.md).
 
 #### Benchmark tools
 

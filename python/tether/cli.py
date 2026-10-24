@@ -3,7 +3,7 @@
 import argparse
 
 from tether.formats import load_detections, save_tracks
-from tether.tracker import (COAST_DAMPING, CONFIRM_FRAMES, MAX_MISSING_FRAMES, MERGE_REACH,
+from tether.tracker import (COAST_DAMPING, CONFIRM_FRAMES, LOW_SCORE_RATIO, MAX_MISSING_FRAMES, MERGE_REACH,
                             MERGE_REACH_GROWTH, MIN_SCORE, SEARCH_GATE, SEARCH_GATE_CAP,
                             SEARCH_GATE_GROWTH, Tracker)
 
@@ -21,6 +21,10 @@ def main(argv: list[str] | None = None) -> int:
                              f"(default {MAX_MISSING_FRAMES})")
     parser.add_argument("--min-score", type=float, default=MIN_SCORE,
                         help=f"detections scored below this are ignored (default {MIN_SCORE})")
+    parser.add_argument("--low-score-ratio", type=float, default=LOW_SCORE_RATIO,
+                        help="detections scored above this times --min-score, and below it, can only keep a "
+                             "tracked track alive; the band moves with the cutoff, and 1 turns it off "
+                             f"(default {LOW_SCORE_RATIO}: 0.1 at the default cutoff)")
     parser.add_argument("--search-gate", type=float, default=SEARCH_GATE,
                         help="center-distance gate, in track box sizes, for re-matching a searching "
                              "track; this and --search-gate-growth both 0 turns it off "
@@ -55,7 +59,8 @@ def main(argv: list[str] | None = None) -> int:
                       coast_damping=args.coast_damping,
                       merge_reach=args.merge_reach,
                       merge_reach_growth=args.merge_reach_growth,
-                      single_target=args.single_target)
+                      single_target=args.single_target,
+                      low_score_ratio=args.low_score_ratio)
     save_tracks(args.tracks, [tracker.update(dets) for dets in load_detections(args.detections)])
     return 0
 

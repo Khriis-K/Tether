@@ -1,0 +1,524 @@
+{
+  "tracker": "coco-at-0.066-no-low-pass",
+  "tracker_command": "\"C:/Python314/python\" -m tether.cli --min-score 0.06577478349208832 --low-score-ratio 1",
+  "model": "yolo26n_1280x736",
+  "det_min_score": 0.01,
+  "split": "val",
+  "clips": 42,
+  "detector": {
+    "kept": 3620,
+    "frames": 38250,
+    "id_kept": 9.4640522875817
+  },
+  "labeled_boxes": {
+    "kept": 33288,
+    "frames": 38250,
+    "id_kept": 87.02745098039216
+  },
+  "per_clip": [
+    {
+      "clip": "20190925_131530_1_1",
+      "frames": 1000,
+      "detector": {
+        "kept": 87,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 919,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_131530_1_2",
+      "frames": 1000,
+      "detector": {
+        "kept": 3,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 909,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_131530_1_4",
+      "frames": 1000,
+      "detector": {
+        "kept": 22,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 965,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_131530_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 69,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 971,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_131530_1_6",
+      "frames": 1000,
+      "detector": {
+        "kept": 101,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 992,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_131530_1_7",
+      "frames": 889,
+      "detector": {
+        "kept": 36,
+        "frames": 889
+      },
+      "labeled_boxes": {
+        "kept": 619,
+        "frames": 889
+      }
+    },
+    {
+      "clip": "20190925_133630_1_1",
+      "frames": 1000,
+      "detector": {
+        "kept": 120,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 504,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_133630_1_10",
+      "frames": 639,
+      "detector": {
+        "kept": 21,
+        "frames": 639
+      },
+      "labeled_boxes": {
+        "kept": 551,
+        "frames": 639
+      }
+    },
+    {
+      "clip": "20190925_133630_1_2",
+      "frames": 1000,
+      "detector": {
+        "kept": 162,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 857,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_133630_1_3",
+      "frames": 1000,
+      "detector": {
+        "kept": 119,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 956,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_133630_1_4",
+      "frames": 1000,
+      "detector": {
+        "kept": 181,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 957,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_133630_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 31,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 912,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_133630_1_6",
+      "frames": 1000,
+      "detector": {
+        "kept": 22,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 886,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_133630_1_7",
+      "frames": 1000,
+      "detector": {
+        "kept": 11,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 897,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_133630_1_8",
+      "frames": 908,
+      "detector": {
+        "kept": 54,
+        "frames": 908
+      },
+      "labeled_boxes": {
+        "kept": 831,
+        "frames": 908
+      }
+    },
+    {
+      "clip": "20190925_205804_1_1",
+      "frames": 898,
+      "detector": {
+        "kept": 52,
+        "frames": 898
+      },
+      "labeled_boxes": {
+        "kept": 740,
+        "frames": 898
+      }
+    },
+    {
+      "clip": "20190925_205804_1_2",
+      "frames": 894,
+      "detector": {
+        "kept": 26,
+        "frames": 894
+      },
+      "labeled_boxes": {
+        "kept": 412,
+        "frames": 894
+      }
+    },
+    {
+      "clip": "20190925_205804_1_3",
+      "frames": 919,
+      "detector": {
+        "kept": 27,
+        "frames": 919
+      },
+      "labeled_boxes": {
+        "kept": 861,
+        "frames": 919
+      }
+    },
+    {
+      "clip": "20190925_205804_1_4",
+      "frames": 927,
+      "detector": {
+        "kept": 48,
+        "frames": 927
+      },
+      "labeled_boxes": {
+        "kept": 519,
+        "frames": 927
+      }
+    },
+    {
+      "clip": "20190925_205804_1_7",
+      "frames": 950,
+      "detector": {
+        "kept": 29,
+        "frames": 950
+      },
+      "labeled_boxes": {
+        "kept": 914,
+        "frames": 950
+      }
+    },
+    {
+      "clip": "20190925_205804_1_8",
+      "frames": 530,
+      "detector": {
+        "kept": 10,
+        "frames": 530
+      },
+      "labeled_boxes": {
+        "kept": 489,
+        "frames": 530
+      }
+    },
+    {
+      "clip": "20190926_142435_1_1",
+      "frames": 1000,
+      "detector": {
+        "kept": 91,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_142435_1_2",
+      "frames": 835,
+      "detector": {
+        "kept": 75,
+        "frames": 835
+      },
+      "labeled_boxes": {
+        "kept": 561,
+        "frames": 835
+      }
+    },
+    {
+      "clip": "20190926_142435_1_3",
+      "frames": 1000,
+      "detector": {
+        "kept": 71,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 996,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_142435_1_4",
+      "frames": 1000,
+      "detector": {
+        "kept": 126,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_142435_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 172,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_142435_1_6",
+      "frames": 1000,
+      "detector": {
+        "kept": 39,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_142435_1_7",
+      "frames": 1000,
+      "detector": {
+        "kept": 188,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_142435_1_8",
+      "frames": 902,
+      "detector": {
+        "kept": 78,
+        "frames": 902
+      },
+      "labeled_boxes": {
+        "kept": 498,
+        "frames": 902
+      }
+    },
+    {
+      "clip": "20190926_143632_1_1",
+      "frames": 1000,
+      "detector": {
+        "kept": 205,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 975,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_143632_1_3",
+      "frames": 1000,
+      "detector": {
+        "kept": 155,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 977,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_143632_1_5",
+      "frames": 955,
+      "detector": {
+        "kept": 126,
+        "frames": 955
+      },
+      "labeled_boxes": {
+        "kept": 533,
+        "frames": 955
+      }
+    },
+    {
+      "clip": "20190926_143632_1_6",
+      "frames": 980,
+      "detector": {
+        "kept": 89,
+        "frames": 980
+      },
+      "labeled_boxes": {
+        "kept": 978,
+        "frames": 980
+      }
+    },
+    {
+      "clip": "20190926_143632_1_7",
+      "frames": 436,
+      "detector": {
+        "kept": 142,
+        "frames": 436
+      },
+      "labeled_boxes": {
+        "kept": 403,
+        "frames": 436
+      }
+    },
+    {
+      "clip": "20190925_131530_1_3",
+      "frames": 1000,
+      "detector": {
+        "kept": 30,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 939,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_133630_1_9",
+      "frames": 896,
+      "detector": {
+        "kept": 15,
+        "frames": 896
+      },
+      "labeled_boxes": {
+        "kept": 572,
+        "frames": 896
+      }
+    },
+    {
+      "clip": "20190925_205804_1_5",
+      "frames": 885,
+      "detector": {
+        "kept": 54,
+        "frames": 885
+      },
+      "labeled_boxes": {
+        "kept": 467,
+        "frames": 885
+      }
+    },
+    {
+      "clip": "20190925_205804_1_6",
+      "frames": 924,
+      "detector": {
+        "kept": 24,
+        "frames": 924
+      },
+      "labeled_boxes": {
+        "kept": 873,
+        "frames": 924
+      }
+    },
+    {
+      "clip": "20190926_142435_1_9",
+      "frames": 299,
+      "detector": {
+        "kept": 136,
+        "frames": 299
+      },
+      "labeled_boxes": {
+        "kept": 297,
+        "frames": 299
+      }
+    },
+    {
+      "clip": "20190926_143632_1_2",
+      "frames": 1000,
+      "detector": {
+        "kept": 295,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 992,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_143632_1_4",
+      "frames": 1000,
+      "detector": {
+        "kept": 175,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 994,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_143632_1_8",
+      "frames": 584,
+      "detector": {
+        "kept": 103,
+        "frames": 584
+      },
+      "labeled_boxes": {
+        "kept": 582,
+        "frames": 584
+      }
+    }
+  ]
+}

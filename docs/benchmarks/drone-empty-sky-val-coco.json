@@ -1,0 +1,89 @@
+{
+  "model": "yolo26n_1280x736",
+  "detections": "results\\antiuav-trt\\detections\\yolo26n_1280x736\\val",
+  "split": {
+    "file": ".claude/worktrees/drone-45-transfer-sets-32c6db/splits/antiuav.json",
+    "name": "val",
+    "seed": 0
+  },
+  "clips": 42,
+  "min_iou": 0.5,
+  "match_rule": "class-agnostic; the drone is found by its best-scored detection at IoU >= min_iou, every other detection is a false positive",
+  "empty_sky": ".claude/worktrees/drone-45-transfer-sets-32c6db/splits/antiuav-empty-sky.json",
+  "min_score": 0.01,
+  "ap50": 0.2278136783730022,
+  "thresholds": [
+    {
+      "threshold": 0.06577478349208832,
+      "recall": 0.39722875816993464,
+      "precision": 0.26998116493123425,
+      "f1": 0.32147088693297227,
+      "found": 15194,
+      "drones": 38250,
+      "detections": 56278,
+      "recall_by_size": {
+        "tiny": {
+          "found": 0,
+          "drones": 8,
+          "recall": 0.0
+        },
+        "small": {
+          "found": 6,
+          "drones": 12,
+          "recall": 0.5
+        },
+        "medium": {
+          "found": 7201,
+          "drones": 20530,
+          "recall": 0.3507549926936191
+        },
+        "large": {
+          "found": 7987,
+          "drones": 17700,
+          "recall": 0.4512429378531073
+        }
+      },
+      "false_alarms": 9,
+      "absent_minutes": 0.5041666666666667,
+      "false_alarms_per_minute": 17.85123966942149,
+      "chosen_by": "given",
+      "at_lowest_saved_score": false
+    },
+    {
+      "threshold": 0.25,
+      "recall": 0.14154248366013072,
+      "precision": 0.4103069344448655,
+      "f1": 0.21047720866945283,
+      "found": 5414,
+      "drones": 38250,
+      "detections": 13195,
+      "recall_by_size": {
+        "tiny": {
+          "found": 0,
+          "drones": 8,
+          "recall": 0.0
+        },
+        "small": {
+          "found": 4,
+          "drones": 12,
+          "recall": 0.3333333333333333
+        },
+        "medium": {
+          "found": 2606,
+          "drones": 20530,
+          "recall": 0.12693619094008768
+        },
+        "large": {
+          "found": 2804,
+          "drones": 17700,
+          "recall": 0.1584180790960452
+        }
+      },
+      "false_alarms": 0,
+      "absent_minutes": 0.5041666666666667,
+      "false_alarms_per_minute": 0.0,
+      "chosen_by": "the tracker's min score",
+      "at_lowest_saved_score": false
+    }
+  ]
+}

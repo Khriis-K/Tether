@@ -1,0 +1,22 @@
+{
+  "model": "yolo26n_1280x736",
+  "detections": "results\\drone-transfer\\detections\\yolo26n_1280x736\\drone-vs-bird-bt",
+  "set": "drone-vs-bird-bt",
+  "images": 86,
+  "min_score": 0.01,
+  "metric": "share of drone-free images with any detection at or above the threshold",
+  "thresholds": [
+    {
+      "threshold": 0.066,
+      "images": 86,
+      "with_alarm": 86,
+      "rate": 1.0
+    },
+    {
+      "threshold": 0.25,
+      "images": 86,
+      "with_alarm": 83,
+      "rate": 0.9651162790697675
+    }
+  ]
+}

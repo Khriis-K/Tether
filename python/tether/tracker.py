@@ -49,10 +49,14 @@ the frame, with no IoU, gate, cap or size limit, before tentative tracks can.
 False for general tracking: it says how much a perfect re-association recovers
 (docs/benchmarks/antiuav-single-target.md).
 
-Detections scored at least `min_score` are high; those above LOW_SCORE but below
-`min_score` are low, and only ever used in stage 2, so they never start a track;
-the rest are dropped. Detection files can be saved unfiltered and each tracker
-picks its own cutoff.
+Detections scored at least `min_score` are high; those above the low floor,
+`low_score_ratio * min_score`, but below `min_score` are low, and only ever used
+in stage 2, so they never start a track; the rest are dropped. The floor moves
+with the cutoff so a detector run at another threshold keeps a band of the same
+proportions: at the default 0.25 it is ByteTrack's 0.1, at 0.352 it is 0.141. A
+fixed 0.1 would leave no band under a cutoff of 0.1 and a band several times wider
+under a high one (docs/benchmarks/drone-tracking.md). Detection files can be saved
+unfiltered and each tracker picks its own cutoff.
 
 Lifecycle, counted in frames: a new track is "tentative" until it has matched
 `confirm_frames` frames in a row, then "tracked". A tentative track that misses
@@ -79,8 +83,8 @@ PATH_LENGTH = 30  # box centers kept per track for trails
 CONFIRM_FRAMES = 3  # matched frames in a row before a new track is confirmed
 MAX_MISSING_FRAMES = 30  # missed frames in a row a confirmed track survives
 MIN_SCORE = 0.25  # lowest detector confidence the tracker uses (Ultralytics' default; untuned)
-# The low-score pass, with ByteTrack's published values (untuned):
-LOW_SCORE = 0.1  # low detections score above this and below min_score
+# The low-score pass, with ByteTrack's published values at the default cutoff (untuned):
+LOW_SCORE_RATIO = 0.4  # low detections score above this times min_score: 0.1 at 0.25
 LOW_MIN_IOU = 0.5  # pairs with a low detection that overlap less are never matched
 # Distance gate for searching tracks, in track box sizes; both 0 turns stage 3 off.
 # Tuned on Anti-UAV val, checked on MOT17 (docs/benchmarks/antiuav-search-gate-cap.md).
@@ -152,10 +156,12 @@ class Tracker:
                  search_gate_growth: float = SEARCH_GATE_GROWTH,
                  search_gate_cap: float = SEARCH_GATE_CAP,
                  coast_damping: float = COAST_DAMPING, merge_reach: float = MERGE_REACH,
-                 merge_reach_growth: float = MERGE_REACH_GROWTH, single_target: bool = False) -> None:
+                 merge_reach_growth: float = MERGE_REACH_GROWTH, single_target: bool = False,
+                 low_score_ratio: float = LOW_SCORE_RATIO) -> None:
         self._confirm_frames = confirm_frames
         self._max_missing_frames = max_missing_frames
         self._min_score = min_score
+        self._low_score = low_score_ratio * min_score
         self._search_gate = search_gate
         self._search_gate_growth = search_gate_growth
         self._search_gate_cap = search_gate_cap
@@ -169,7 +175,7 @@ class Tracker:
     def update(self, detections: list[Detection]) -> list[Track]:
         """Advance one frame. Returns the live tracks, sorted by ID."""
         high = [d for d in detections if d.score >= self._min_score]
-        low = [d for d in detections if LOW_SCORE < d.score < self._min_score]
+        low = [d for d in detections if self._low_score < d.score < self._min_score]
         # High detections come first, so indices below len(high) are high ones.
         detections = high + low
         # Every track's filter was stepped forward at the end of the last

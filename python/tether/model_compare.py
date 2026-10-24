@@ -1,9 +1,10 @@
 """tether-model-compare: the C++ pipeline on TensorRT with several models, timed on the same video.
 
 Runs `tether-pipeline --runtime tensorrt` (headless, CUDA graph on) once per
-model per round, in the --pipeline mode asked for. The model order rotates each
-round, so a laptop speeding up or slowing down during the runs doesn't land on
-one model only. Each run's timing log is summarized with tether-timing's
+model per round, in the --pipeline mode asked for, with the --prep asked for
+(cpu, the default, or cuda: the shipped configuration's frame prep). The
+model order rotates each round, so a laptop speeding up or slowing down during
+the runs doesn't land on one model only. Each run's timing log is summarized with tether-timing's
 summary, plus each step's busy share: its total time over the run's wall time.
 In parallel mode the slowest stage, the one that sets the FPS, is near 100%.
 Each model's exact input shape is read from the model, and each run is marked
@@ -105,12 +106,14 @@ def markdown_table(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def run_model(cpp_dir: Path, video: str, model: str, mode: str, log: Path, max_frames: int | None) -> None:
+def run_model(cpp_dir: Path, video: str, model: str, mode: str, log: Path, max_frames: int | None,
+              prep: str = "cpu") -> None:
     binary = cpp_binary(cpp_dir, "tether-pipeline")
     if binary is None:
         raise SystemExit(f"tether-model-compare: error: no tether-pipeline in {cpp_dir}; "
                          "build it with TensorRT_ROOT set")
-    command = [binary, video, "--model", model, "--runtime", "tensorrt", "--pipeline", mode, "--timing", log]
+    command = [binary, video, "--model", model, "--runtime", "tensorrt", "--prep", prep, "--pipeline", mode,
+               "--timing", log]
     if max_frames is not None:
         command += ["--max-frames", max_frames]
     _run(command, f"tether-pipeline --model {model}")
@@ -137,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="YOLO26 ONNX models, each with its TensorRT engine next to it (.engine)")
     parser.add_argument("--pipeline", choices=("sequential", "parallel"), default="parallel",
                         help="pipeline mode of the timing runs (default parallel)")
+    parser.add_argument("--prep", choices=("cpu", "cuda"), default="cpu",
+                        help="frame prep of every run (default cpu; cuda is the shipped configuration's)")
     parser.add_argument("--rounds", type=int, default=2, help="runs per model (default 2)")
     parser.add_argument("--max-frames", type=int, help="stop each run after this many frames (default: all)")
     parser.add_argument("--accuracy-dir", type=Path,
@@ -160,14 +165,14 @@ def main(argv: list[str] | None = None) -> int:
         orders.append(order)
         for model in order:
             log = out.with_name(f"{out.stem}.round{i}-{Path(model).stem}-timing.jsonl")
-            run_model(args.cpp_dir, args.video, model, args.pipeline, log, args.max_frames)
+            run_model(args.cpp_dir, args.video, model, args.pipeline, log, args.max_frames, prep=args.prep)
             frames = load_timings(log)
             runs[model].append({**summarize(frames), "busy_share": busy_share(frames)})
             print(f"round {i}, {model}: {runs[model][-1]['fps']:.1f} FPS", flush=True)
 
     rows = [model_row(m, _input_size(m), runs[m], _accuracy(args.accuracy_dir, args.accuracy_prefix, m))
             for m in args.models]
-    result = {"video": args.video, "pipeline": args.pipeline, "orders": orders,
+    result = {"video": args.video, "pipeline": args.pipeline, "prep": args.prep, "orders": orders,
               "targets": {"fps": TARGET_FPS, "p99_ms": TARGET_P99_MS}, "rows": rows, "runs": runs}
     out.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(markdown_table(rows))

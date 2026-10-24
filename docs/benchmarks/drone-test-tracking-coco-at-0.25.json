@@ -1,0 +1,1112 @@
+{
+  "tracker": "coco-at-0.25",
+  "tracker_command": "\"C:/Projects/Tether/.claude/worktrees/drone-46-pipelines-ef8318/cpp/build/Release/tether-track.exe\" --min-score 0.25",
+  "model": "yolo26n_1280x736",
+  "det_min_score": 0.01,
+  "split": "test",
+  "clips": 91,
+  "detector": {
+    "kept": 12318,
+    "frames": 79724,
+    "id_kept": 15.450805278209824
+  },
+  "labeled_boxes": {
+    "kept": 65863,
+    "frames": 79724,
+    "id_kept": 82.61376749786764
+  },
+  "per_clip": [
+    {
+      "clip": "20190925_111757_1_1",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 989,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_111757_1_10",
+      "frames": 124,
+      "detector": {
+        "kept": 0,
+        "frames": 124
+      },
+      "labeled_boxes": {
+        "kept": 120,
+        "frames": 124
+      }
+    },
+    {
+      "clip": "20190925_111757_1_2",
+      "frames": 986,
+      "detector": {
+        "kept": 0,
+        "frames": 986
+      },
+      "labeled_boxes": {
+        "kept": 979,
+        "frames": 986
+      }
+    },
+    {
+      "clip": "20190925_111757_1_3",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 993,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_111757_1_4",
+      "frames": 1000,
+      "detector": {
+        "kept": 99,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 989,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_111757_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 57,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 989,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_111757_1_6",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 975,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_111757_1_7",
+      "frames": 856,
+      "detector": {
+        "kept": 0,
+        "frames": 856
+      },
+      "labeled_boxes": {
+        "kept": 436,
+        "frames": 856
+      }
+    },
+    {
+      "clip": "20190925_111757_1_8",
+      "frames": 947,
+      "detector": {
+        "kept": 0,
+        "frames": 947
+      },
+      "labeled_boxes": {
+        "kept": 864,
+        "frames": 947
+      }
+    },
+    {
+      "clip": "20190925_111757_1_9",
+      "frames": 940,
+      "detector": {
+        "kept": 0,
+        "frames": 940
+      },
+      "labeled_boxes": {
+        "kept": 675,
+        "frames": 940
+      }
+    },
+    {
+      "clip": "20190925_124000_1_1",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 920,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124000_1_10",
+      "frames": 164,
+      "detector": {
+        "kept": 0,
+        "frames": 164
+      },
+      "labeled_boxes": {
+        "kept": 151,
+        "frames": 164
+      }
+    },
+    {
+      "clip": "20190925_124000_1_2",
+      "frames": 1000,
+      "detector": {
+        "kept": 5,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 942,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124000_1_3",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 908,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124000_1_4",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 952,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124000_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 927,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124000_1_6",
+      "frames": 1000,
+      "detector": {
+        "kept": 6,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 945,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124000_1_7",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 940,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124000_1_8",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 913,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124000_1_9",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 917,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124612_1_1",
+      "frames": 965,
+      "detector": {
+        "kept": 14,
+        "frames": 965
+      },
+      "labeled_boxes": {
+        "kept": 884,
+        "frames": 965
+      }
+    },
+    {
+      "clip": "20190925_124612_1_2",
+      "frames": 885,
+      "detector": {
+        "kept": 0,
+        "frames": 885
+      },
+      "labeled_boxes": {
+        "kept": 407,
+        "frames": 885
+      }
+    },
+    {
+      "clip": "20190925_124612_1_3",
+      "frames": 469,
+      "detector": {
+        "kept": 0,
+        "frames": 469
+      },
+      "labeled_boxes": {
+        "kept": 180,
+        "frames": 469
+      }
+    },
+    {
+      "clip": "20190925_124612_1_4",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 921,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124612_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 910,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124612_1_6",
+      "frames": 1000,
+      "detector": {
+        "kept": 0,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 919,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_124612_1_7",
+      "frames": 922,
+      "detector": {
+        "kept": 0,
+        "frames": 922
+      },
+      "labeled_boxes": {
+        "kept": 676,
+        "frames": 922
+      }
+    },
+    {
+      "clip": "20190925_124612_1_8",
+      "frames": 923,
+      "detector": {
+        "kept": 0,
+        "frames": 923
+      },
+      "labeled_boxes": {
+        "kept": 842,
+        "frames": 923
+      }
+    },
+    {
+      "clip": "20190925_134301_1_1",
+      "frames": 1000,
+      "detector": {
+        "kept": 21,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 911,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_134301_1_2",
+      "frames": 938,
+      "detector": {
+        "kept": 34,
+        "frames": 938
+      },
+      "labeled_boxes": {
+        "kept": 761,
+        "frames": 938
+      }
+    },
+    {
+      "clip": "20190925_134301_1_3",
+      "frames": 974,
+      "detector": {
+        "kept": 47,
+        "frames": 974
+      },
+      "labeled_boxes": {
+        "kept": 909,
+        "frames": 974
+      }
+    },
+    {
+      "clip": "20190925_134301_1_4",
+      "frames": 982,
+      "detector": {
+        "kept": 0,
+        "frames": 982
+      },
+      "labeled_boxes": {
+        "kept": 898,
+        "frames": 982
+      }
+    },
+    {
+      "clip": "20190925_134301_1_5",
+      "frames": 775,
+      "detector": {
+        "kept": 0,
+        "frames": 775
+      },
+      "labeled_boxes": {
+        "kept": 639,
+        "frames": 775
+      }
+    },
+    {
+      "clip": "20190925_134301_1_6",
+      "frames": 454,
+      "detector": {
+        "kept": 0,
+        "frames": 454
+      },
+      "labeled_boxes": {
+        "kept": 237,
+        "frames": 454
+      }
+    },
+    {
+      "clip": "20190925_134301_1_7",
+      "frames": 162,
+      "detector": {
+        "kept": 0,
+        "frames": 162
+      },
+      "labeled_boxes": {
+        "kept": 138,
+        "frames": 162
+      }
+    },
+    {
+      "clip": "20190925_134301_1_8",
+      "frames": 920,
+      "detector": {
+        "kept": 283,
+        "frames": 920
+      },
+      "labeled_boxes": {
+        "kept": 559,
+        "frames": 920
+      }
+    },
+    {
+      "clip": "20190925_134301_1_9",
+      "frames": 597,
+      "detector": {
+        "kept": 203,
+        "frames": 597
+      },
+      "labeled_boxes": {
+        "kept": 516,
+        "frames": 597
+      }
+    },
+    {
+      "clip": "20190925_193610_1_1",
+      "frames": 933,
+      "detector": {
+        "kept": 57,
+        "frames": 933
+      },
+      "labeled_boxes": {
+        "kept": 344,
+        "frames": 933
+      }
+    },
+    {
+      "clip": "20190925_193610_1_2",
+      "frames": 932,
+      "detector": {
+        "kept": 293,
+        "frames": 932
+      },
+      "labeled_boxes": {
+        "kept": 683,
+        "frames": 932
+      }
+    },
+    {
+      "clip": "20190925_193610_1_3",
+      "frames": 950,
+      "detector": {
+        "kept": 715,
+        "frames": 950
+      },
+      "labeled_boxes": {
+        "kept": 841,
+        "frames": 950
+      }
+    },
+    {
+      "clip": "20190925_193610_1_4",
+      "frames": 943,
+      "detector": {
+        "kept": 136,
+        "frames": 943
+      },
+      "labeled_boxes": {
+        "kept": 610,
+        "frames": 943
+      }
+    },
+    {
+      "clip": "20190925_193610_1_5",
+      "frames": 948,
+      "detector": {
+        "kept": 123,
+        "frames": 948
+      },
+      "labeled_boxes": {
+        "kept": 876,
+        "frames": 948
+      }
+    },
+    {
+      "clip": "20190925_193610_1_6",
+      "frames": 923,
+      "detector": {
+        "kept": 177,
+        "frames": 923
+      },
+      "labeled_boxes": {
+        "kept": 857,
+        "frames": 923
+      }
+    },
+    {
+      "clip": "20190925_193610_1_7",
+      "frames": 894,
+      "detector": {
+        "kept": 397,
+        "frames": 894
+      },
+      "labeled_boxes": {
+        "kept": 591,
+        "frames": 894
+      }
+    },
+    {
+      "clip": "20190925_193610_1_8",
+      "frames": 921,
+      "detector": {
+        "kept": 436,
+        "frames": 921
+      },
+      "labeled_boxes": {
+        "kept": 866,
+        "frames": 921
+      }
+    },
+    {
+      "clip": "20190925_193610_1_9",
+      "frames": 889,
+      "detector": {
+        "kept": 350,
+        "frames": 889
+      },
+      "labeled_boxes": {
+        "kept": 517,
+        "frames": 889
+      }
+    },
+    {
+      "clip": "20190925_200805_1_1",
+      "frames": 950,
+      "detector": {
+        "kept": 39,
+        "frames": 950
+      },
+      "labeled_boxes": {
+        "kept": 754,
+        "frames": 950
+      }
+    },
+    {
+      "clip": "20190925_200805_1_2",
+      "frames": 934,
+      "detector": {
+        "kept": 62,
+        "frames": 934
+      },
+      "labeled_boxes": {
+        "kept": 528,
+        "frames": 934
+      }
+    },
+    {
+      "clip": "20190925_200805_1_3",
+      "frames": 1000,
+      "detector": {
+        "kept": 37,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 167,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_200805_1_4",
+      "frames": 940,
+      "detector": {
+        "kept": 269,
+        "frames": 940
+      },
+      "labeled_boxes": {
+        "kept": 423,
+        "frames": 940
+      }
+    },
+    {
+      "clip": "20190925_200805_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 147,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 219,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190925_200805_1_6",
+      "frames": 862,
+      "detector": {
+        "kept": 120,
+        "frames": 862
+      },
+      "labeled_boxes": {
+        "kept": 248,
+        "frames": 862
+      }
+    },
+    {
+      "clip": "20190925_200805_1_7",
+      "frames": 454,
+      "detector": {
+        "kept": 74,
+        "frames": 454
+      },
+      "labeled_boxes": {
+        "kept": 229,
+        "frames": 454
+      }
+    },
+    {
+      "clip": "20190925_200805_1_8",
+      "frames": 873,
+      "detector": {
+        "kept": 294,
+        "frames": 873
+      },
+      "labeled_boxes": {
+        "kept": 403,
+        "frames": 873
+      }
+    },
+    {
+      "clip": "20190925_200805_1_9",
+      "frames": 475,
+      "detector": {
+        "kept": 113,
+        "frames": 475
+      },
+      "labeled_boxes": {
+        "kept": 85,
+        "frames": 475
+      }
+    },
+    {
+      "clip": "20190926_095902_1_1",
+      "frames": 910,
+      "detector": {
+        "kept": 102,
+        "frames": 910
+      },
+      "labeled_boxes": {
+        "kept": 345,
+        "frames": 910
+      }
+    },
+    {
+      "clip": "20190926_095902_1_2",
+      "frames": 1000,
+      "detector": {
+        "kept": 166,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 995,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_095902_1_3",
+      "frames": 675,
+      "detector": {
+        "kept": 86,
+        "frames": 675
+      },
+      "labeled_boxes": {
+        "kept": 404,
+        "frames": 675
+      }
+    },
+    {
+      "clip": "20190926_095902_1_4",
+      "frames": 817,
+      "detector": {
+        "kept": 407,
+        "frames": 817
+      },
+      "labeled_boxes": {
+        "kept": 678,
+        "frames": 817
+      }
+    },
+    {
+      "clip": "20190926_095902_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 698,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 996,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_095902_1_6",
+      "frames": 970,
+      "detector": {
+        "kept": 152,
+        "frames": 970
+      },
+      "labeled_boxes": {
+        "kept": 965,
+        "frames": 970
+      }
+    },
+    {
+      "clip": "20190926_095902_1_7",
+      "frames": 956,
+      "detector": {
+        "kept": 360,
+        "frames": 956
+      },
+      "labeled_boxes": {
+        "kept": 760,
+        "frames": 956
+      }
+    },
+    {
+      "clip": "20190926_095902_1_8",
+      "frames": 861,
+      "detector": {
+        "kept": 66,
+        "frames": 861
+      },
+      "labeled_boxes": {
+        "kept": 516,
+        "frames": 861
+      }
+    },
+    {
+      "clip": "20190926_095902_1_9",
+      "frames": 764,
+      "detector": {
+        "kept": 562,
+        "frames": 764
+      },
+      "labeled_boxes": {
+        "kept": 761,
+        "frames": 764
+      }
+    },
+    {
+      "clip": "20190926_102042_1_1",
+      "frames": 1000,
+      "detector": {
+        "kept": 275,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 985,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_102042_1_2",
+      "frames": 510,
+      "detector": {
+        "kept": 147,
+        "frames": 510
+      },
+      "labeled_boxes": {
+        "kept": 278,
+        "frames": 510
+      }
+    },
+    {
+      "clip": "20190926_102042_1_3",
+      "frames": 911,
+      "detector": {
+        "kept": 79,
+        "frames": 911
+      },
+      "labeled_boxes": {
+        "kept": 894,
+        "frames": 911
+      }
+    },
+    {
+      "clip": "20190926_102042_1_4",
+      "frames": 875,
+      "detector": {
+        "kept": 20,
+        "frames": 875
+      },
+      "labeled_boxes": {
+        "kept": 650,
+        "frames": 875
+      }
+    },
+    {
+      "clip": "20190926_102042_1_5",
+      "frames": 890,
+      "detector": {
+        "kept": 13,
+        "frames": 890
+      },
+      "labeled_boxes": {
+        "kept": 684,
+        "frames": 890
+      }
+    },
+    {
+      "clip": "20190926_102042_1_6",
+      "frames": 953,
+      "detector": {
+        "kept": 164,
+        "frames": 953
+      },
+      "labeled_boxes": {
+        "kept": 941,
+        "frames": 953
+      }
+    },
+    {
+      "clip": "20190926_102042_1_7",
+      "frames": 1000,
+      "detector": {
+        "kept": 90,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 973,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_102042_1_8",
+      "frames": 951,
+      "detector": {
+        "kept": 78,
+        "frames": 951
+      },
+      "labeled_boxes": {
+        "kept": 823,
+        "frames": 951
+      }
+    },
+    {
+      "clip": "20190926_102042_1_9",
+      "frames": 429,
+      "detector": {
+        "kept": 69,
+        "frames": 429
+      },
+      "labeled_boxes": {
+        "kept": 396,
+        "frames": 429
+      }
+    },
+    {
+      "clip": "20190926_111509_1_1",
+      "frames": 1000,
+      "detector": {
+        "kept": 543,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 996,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_111509_1_2",
+      "frames": 980,
+      "detector": {
+        "kept": 240,
+        "frames": 980
+      },
+      "labeled_boxes": {
+        "kept": 978,
+        "frames": 980
+      }
+    },
+    {
+      "clip": "20190926_111509_1_3",
+      "frames": 938,
+      "detector": {
+        "kept": 28,
+        "frames": 938
+      },
+      "labeled_boxes": {
+        "kept": 677,
+        "frames": 938
+      }
+    },
+    {
+      "clip": "20190926_111509_1_4",
+      "frames": 1000,
+      "detector": {
+        "kept": 150,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_111509_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 429,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_111509_1_6",
+      "frames": 1000,
+      "detector": {
+        "kept": 675,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_111509_1_7",
+      "frames": 1000,
+      "detector": {
+        "kept": 250,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_111509_1_8",
+      "frames": 970,
+      "detector": {
+        "kept": 37,
+        "frames": 970
+      },
+      "labeled_boxes": {
+        "kept": 968,
+        "frames": 970
+      }
+    },
+    {
+      "clip": "20190926_111509_1_9",
+      "frames": 139,
+      "detector": {
+        "kept": 6,
+        "frames": 139
+      },
+      "labeled_boxes": {
+        "kept": 137,
+        "frames": 139
+      }
+    },
+    {
+      "clip": "20190926_134054_1_1",
+      "frames": 871,
+      "detector": {
+        "kept": 63,
+        "frames": 871
+      },
+      "labeled_boxes": {
+        "kept": 868,
+        "frames": 871
+      }
+    },
+    {
+      "clip": "20190926_134054_1_2",
+      "frames": 1000,
+      "detector": {
+        "kept": 72,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 595,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_134054_1_3",
+      "frames": 1000,
+      "detector": {
+        "kept": 239,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_134054_1_4",
+      "frames": 1000,
+      "detector": {
+        "kept": 435,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_134054_1_5",
+      "frames": 1000,
+      "detector": {
+        "kept": 44,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_134054_1_6",
+      "frames": 1000,
+      "detector": {
+        "kept": 192,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_134054_1_7",
+      "frames": 992,
+      "detector": {
+        "kept": 65,
+        "frames": 992
+      },
+      "labeled_boxes": {
+        "kept": 990,
+        "frames": 992
+      }
+    },
+    {
+      "clip": "20190926_134054_1_8",
+      "frames": 1000,
+      "detector": {
+        "kept": 574,
+        "frames": 1000
+      },
+      "labeled_boxes": {
+        "kept": 998,
+        "frames": 1000
+      }
+    },
+    {
+      "clip": "20190926_134054_1_9",
+      "frames": 558,
+      "detector": {
+        "kept": 134,
+        "frames": 558
+      },
+      "labeled_boxes": {
+        "kept": 556,
+        "frames": 558
+      }
+    }
+  ]
+}

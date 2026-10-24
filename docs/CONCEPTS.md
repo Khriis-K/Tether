@@ -169,7 +169,7 @@ A standard pedestrian-tracking benchmark from MOTChallenge: crowded street video
 ### Anti-UAV
 A dataset of drone videos with labeled drone boxes. Drones are small, fast, and often in single-target clips, so it tests different things than crowded MOT17 does.
 
-**In Tether:** we don't run a detector on it. We feed in the *labeled* boxes, delete some on purpose, and see whether the tracker recovers (`tether-antiuav`, results in `docs/benchmarks/antiuav-dropout.md`). A track only "has" the drone if its box overlaps the label with IoU ≥ 0.5; otherwise, with one drone per clip, a track that never dies would look perfect.
+**In Tether:** the dropout tests feed in the *labeled* boxes, delete some on purpose, and see whether the tracker recovers (`tether-antiuav`, results in `docs/benchmarks/antiuav-dropout.md`). Since #44 it's also tracked [end to end](#end-to-end-tracking-on-a-real-detectors-output) on a drone detector's own output. A track only "has" the drone if its box overlaps the label with IoU ≥ 0.5; otherwise, with one drone per clip, a track that never dies would look perfect.
 
 **Gotcha:** the motion a tracker sees is motion *in the image*, which includes the camera's. Anti-UAV300 is filmed by a pan-tilt camera that keeps re-centering on the drone, so the drone swings back and forth across the frame in a sawtooth even when it flies straight. A constant-velocity model predicts one frame ahead fine, but coasting through a few missed frames sends it the wrong way whenever the camera snaps back. Measured on the textured clips: the gimbal holds still, then jumps about 550 px in roughly 5 frames, then holds again (`docs/benchmarks/antiuav-telemetry.md`).
 
@@ -182,7 +182,21 @@ An F1 score for identity: of all the boxes, how many carry the *right* ID over t
 ### ByteTrack
 A well-known, simple, strong tracker, used as the baseline. Its key idea is that low-confidence detections, which most trackers throw away, still get a **second matching pass** against tracks left unmatched by the first pass. That's how it holds onto half-hidden people.
 
-**In Tether:** both trackers get the same *unfiltered* detections, so ByteTrack keeps its second pass and the comparison stays fair. Tether has the same pass: tracks that were tracked last frame and found no detection scored ≥ 0.25 can match one scored between 0.1 and 0.25, at IoU ≥ 0.5. Those weak detections never start a track. The 0.1 and 0.5 are ByteTrack's published values, not tuned.
+**In Tether:** both trackers get the same *unfiltered* detections, so ByteTrack keeps its second pass and the comparison stays fair. Tether has the same pass: tracks that were tracked last frame and found no detection scored ≥ 0.25 can match one scored between 0.1 and 0.25, at IoU ≥ 0.5. Those weak detections never start a track. The 0.1 and 0.5 are ByteTrack's published values, not tuned. Since #44 the 0.1 is a [low-score band that moves with the cutoff](#low-score-band-moving-with-the-cutoff).
+
+### Low-score band (moving with the cutoff)
+The scores a tracker treats as "weak but still worth keeping a track alive on": below its cutoff, above a floor. ByteTrack fixes both, 0.25 and 0.1. Run a detector at another threshold and a fixed floor breaks: under a cutoff of 0.1 the band is empty, and under a high cutoff it's several times wider.
+
+**In Tether:** the floor is 0.4 × the cutoff (`--low-score-ratio`, default 0.4, in both trackers), so at the default 0.25 it's exactly 0.1 and nothing earlier changed. The drone model runs at 0.352 with a band of 0.141–0.352. On the Anti-UAV val, the pass is worth 1.26 points of end-to-end ID kept for the drone model, and where its floor sits doesn't matter, since nearly all its scores are high. For the COCO model at its 0.066 best-F1 cut, a fixed 0.1 floor would have switched the pass off without a word; the rule keeps it, worth 3.7 points (9.5% → 13.2%) (`docs/benchmarks/drone-tracking.md`).
+
+**Gotcha:** the 0.4 is ByteTrack's own proportion (0.1 / 0.25), kept, not fitted. A model whose scores are spread differently could want another ratio, and that's what the flag is for.
+
+### End-to-end tracking (on a real detector's output)
+Scoring the tracker on what a detector actually found, rather than on the labeled boxes. The detector's misses, wrong boxes and jittery scores all reach the tracker, so the score is what the whole system does. It's read next to the same tracker on the labeled boxes, which shows what the detector costs.
+
+**In Tether:** `tether-antiuav --detections DIR` runs the tracker on a folder from `tether-antiuav-detect` and scores ID kept on every frame where the drone is labeled, so a missed frame counts against it and a detector that finds nothing scores 0. Classes are ignored, as in [class-agnostic scoring](#class-agnostic-scoring). On the session-disjoint val the fine-tuned drone model keeps the ID on 89.7% of frames and the COCO model on 10.9%, with the labeled boxes at 87.0% (`docs/benchmarks/drone-tracking.md`, #44).
+
+**Gotcha:** the labeled-box row is called a ceiling, but it's only one if the labels are what a perfect detector would output. On Anti-UAV they aren't quite: they mark a half-visible drone absent, and their box height jumps during camera snaps. The drone model's detections bridged those gaps, so it scored *above* the labels. Check per clip before calling a gap either way.
 
 ### Null-case test
 Before trusting a metric, ask: *what score would a useless system get?* If a tracker that does nothing smart still scores well, the metric isn't measuring what you think.
@@ -223,16 +237,74 @@ Scoring a model on data it was trained on. The numbers look great and mean nothi
 ### Transfer test (out-of-distribution evaluation)
 Scoring a model, untouched, on a dataset from a different source than the one it trained on. A held-out test split only shows the model works on more footage *like* its training data. A transfer test asks whether it works elsewhere, and the gap between the two scores measures how far it generalizes.
 
-**In Tether:** all of Anti-UAV300 comes from two days and one camera, so Anti-UAV test can't show the drone detector works anywhere else. Seraphim's test split, never trained on, is the transfer test. Anti-UAV frames are scanned for (by the turret's overlay) and dropped first, since Seraphim merges 23 sources and can't rule them out (ADR 0004).
+**In Tether:** all of Anti-UAV300 comes from two days and one camera, so Anti-UAV test can't show the drone detector works anywhere else. Seraphim's test split, never trained on, is the transfer test. Since Seraphim merges 23 sources and can't rule Anti-UAV out, its images were scanned for the turret's overlay first ([contamination check](#contamination-check-finding-one-dataset-inside-another)). None was found, so all 8,349 are used. The COCO model scores AP50 0.216 there, against 0.228 on the Anti-UAV val, both at a 0.01 floor (`docs/benchmarks/drone-transfer-sets.md`, #45). The fine-tuned drone model scores 0.915 on Anti-UAV test but 0.164 on Seraphim, under the COCO model it started from, so it failed its transfer target (`docs/benchmarks/drone-test.md`, #48). The gap between those two numbers is the point of the test: Anti-UAV test alone would have said "0.915".
 
 **Gotcha:** a transfer test only counts if nothing about it was tuned. Train on the second dataset and its test becomes in-distribution, possibly leaky. That's why Seraphim stays out of training even though it would probably make a better detector.
 
 ### AP50 (average precision at IoU 0.5)
 A detector score over every confidence threshold. Sort the detections by confidence, trace precision against recall as the threshold drops, and take the area under that curve. A detection is a hit at IoU ≥ 0.5 with a labeled box. One threshold-free number like this is good for comparing models; recall and precision are then reported at the one threshold you actually run.
 
-**In Tether:** the drone models are compared on AP50 (#42), and the operating threshold is the one with the best F1 on val, frozen before test.
+**In Tether:** the drone models are compared on AP50, and the [operating threshold](#operating-threshold-best-f1) is the one with the best F1 on val, frozen before test. `tether-drone-score` cuts tied scores together, so the order of tied detections can't move the score. The pretrained COCO YOLO26n at 1280×736, scored [class-agnostically](#class-agnostic-scoring), gets 0.146 on the session-disjoint val with scores saved down to 0.1 (#42), and 0.228 down to 0.01 (#43): the "before" row (`docs/benchmarks/drone-coco-baseline.md`). The [fine-tuned](#fine-tuning) drone model gets 0.995 at the 0.01 floor (`docs/benchmarks/drone-model.md`).
 
-**Gotcha:** recall alone fails the [null-case test](#null-case-test): a detector that boxes everything gets perfect recall. AP50 doesn't, since a model that outputs nothing, or the same box every frame, scores about 0.
+**Gotcha:** recall alone fails the [null-case test](#null-case-test): a detector that boxes everything gets perfect recall. AP50 doesn't, since a model that outputs nothing, or the same box every frame, scores about 0 (both are unit tests of the scorer). Also, AP only sees the detections that were saved. Tether's detection files keep scores ≥ 0.1 by default, so the curve stops there, and AP50 is a lower bound that's only comparable between dumps with the same floor. Lowering the floor to 0.01 moved the COCO model from 0.146 to 0.228 while its recall, precision and false alarms at 0.1 and 0.25 stayed the same, so drone dumps use 0.01 since #43.
+
+### Class-agnostic scoring
+Scoring a detector on whether it boxed the object, ignoring the class it named. It's how you score a model on a class it was never trained on: count any box that lands on the object.
+
+**In Tether:** the COCO model has no drone class, so for its "before" row any detection counts as a drone. At the tracker's 0.25 it found 14.2% of val drones, most of them as "airplane" (4,083 of 5,414), then "person" and "traffic light"; "bird" found only 42 (`docs/benchmarks/drone-coco-baseline.md`, counted by `tools/drone_breakdown.py`).
+
+**Gotcha:** it cuts both ways. Any wrong class on the drone counts as a hit, but YOLO26 suppresses duplicates per class, not across them, so an "airplane" and a "bird" box on the same drone are one hit plus one false positive.
+
+### Operating threshold (best F1)
+AP50 summarizes every threshold, but a running system uses one. A common choice is the score cut with the best F1 (the balance of recall and precision, 2·TP / (2·TP + FP + FN)) on the validation set, frozen before test, so test never chooses it.
+
+**In Tether:** `tether-drone-score` reports the best-F1 cut on the split it's given, or a threshold you pass (`--threshold`, for test), with the tracker's 0.25 beside it, and flags a best cut within 0.01 of the lowest saved score (`at_lowest_saved_score`). For the COCO baseline the best cut landed exactly on the detection files' 0.1 floor, which means F1 was still rising there and the true best cut is lower. Redumped at a 0.01 floor it's 0.066, inside the saved range (`docs/benchmarks/drone-coco-baseline.md`). The drone model's is 0.352, the threshold frozen for test (`docs/benchmarks/drone-model.md`).
+
+**Gotcha:** a best-F1 cut sitting at the lowest score you saved is a warning, not an answer. It says the files were cut off too high to find the real best.
+
+### False alarms per minute
+How often a detector reports something when there's nothing there, as a rate over time instead of per frame, so clips at different frame rates compare fairly.
+
+**In Tether:** counted only on Anti-UAV frames where the drone is labeled absent, divided by those frames' duration at each clip's own frame rate. The session-disjoint val has just 1,232 such frames (1.03 min), so the COCO baseline's 7.8 per minute at 0.25 is 8 detections: an order of magnitude, not a rate to compare to one decimal (`docs/benchmarks/drone-coco-baseline.md`).
+
+**Gotcha:** it only counts *where nothing is labeled*. A wrong box on a frame with the drone in view is a false positive for precision, not a false alarm here, and an easy background (empty sky) makes a low rate cheap. It also trusts the label. The fine-tuned drone model's 48 "false alarms" on val (46.8 a minute) are almost all the drone half out of view, labeled absent: 47 of them come within 10 frames of a labeled drone or touch the frame's edge (`docs/benchmarks/drone-model.md`). A better detector scored a worse rate, because it found drones the labels had given up on.
+
+### Empty sky (a negative set defined by a rule)
+The frames a false-alarm rate is counted on should hold nothing the detector is right to find. "Labeled absent" isn't enough when labels give up on a target that's still partly in view. So the negative set is defined by a rule that reads only labels and frame indices, fixed before test, and applied to test blind.
+
+**In Tether:** a frame is empty sky if the drone is labeled absent and no labeled drone is within 2 s before or after it in the clip. The frames just past either end of the clip count as possibly holding the drone. It keeps 605 of val's 1,232 drone-absent frames (0.50 min) and 2,704 of test's 5,650 (2.25 min). On val, the drone model's 48 alarms at 0.352 on drone-absent frames become 0 on empty sky (`splits/antiuav-empty-sky.json`, `docs/benchmarks/drone-transfer-sets.md`, #45).
+
+**Gotcha:** the margin was justified partly by the very detections it removes on val (the furthest was 36 frames from a labeled drone, 4 inside the 40-frame margin), so val's 0 isn't independent evidence; test is. And a rule like this shrinks the set: val's empty sky is 80% one clip. On test the drone model gave 190 alarms there, 174 on one lamp in a night clip (`docs/benchmarks/drone-test.md`, #48). A rule that removes the labels' blind spots doesn't remove real [hard negatives](#hard-negative).
+
+### Hard negative
+A background thing that looks like the target to the model: not a labeling mistake, just a real non-target that scores high. A detector trained on few negatives meets hard negatives first in new footage. They're why a false-alarm rate on easy background (empty sky) can't be read as the rate on the real scene. The usual fix is to collect them and add them to training as negatives.
+
+**In Tether:** the drone model was trained on Anti-UAV with only its ~5% drone-absent frames as negatives. In one night clip of Anti-UAV test, it boxed a red-and-white lamp on a structure on 174 frames, a lit point like a drone at night. The COCO model fires at the same spot, so the lamp is hard for both. It also called a small bird in flight against the sky a drone on 8 Drone-vs-Bird images from two scenes (`docs/benchmarks/drone-test.md`, #48).
+
+**Gotcha:** one hard negative that stays in view keeps firing on every frame: one lamp is 174 detections. That's a real failure, the recurring false object a per-detection bar is meant to catch, but when you go looking for the cause, check whether the alarms are one thing or many.
+
+### Perceptual hash (near-duplicate removal)
+A short fingerprint of what an image looks like, not its bytes, so a resized, recompressed or slightly brightened copy gets nearly the same hash. pHash shrinks the image to 32×32 grayscale, takes its DCT, and sets one bit per low frequency (8×8 of them) by whether it's above their median. Near-duplicates are images whose hashes differ in only a few of the 64 bits (Hamming distance).
+
+**In Tether:** the Drone-vs-Bird bird test images are walked in number order, and one is kept unless it's within 10 bits of an image already kept (`tether.near_duplicates`). 361 become 86. Most drops are frames from a few bird videos: one image absorbs 32 others (`splits/drone-vs-bird-bt.json`, #45).
+
+**Gotcha:** frames from one video can be 14–20 bits apart, the same scene with the bird in another pose, so "deduplicated" doesn't mean independent. 86 images from a handful of videos carry less evidence than 86 separate photos. And the greedy walk compares only with *kept* images, so the result doesn't depend on chains of drops.
+
+### Contamination check (finding one dataset inside another)
+A test set merged from many sources may contain copies of your training data, which would turn a transfer test back into an in-distribution one. When the source isn't recorded, look for something only the training data has, and test the detector for it on real training frames (all should be found) and on the test set by eye (none wrongly found).
+
+**In Tether:** every Anti-UAV frame has the turret's reticle at fixed places. `tether.antiuav_overlay` scores how strongly those twelve line segments stand out, minus the same measure just beside them, after mapping an image back to 1920×1080. 681 real train and val frames, resized, letterboxed, stretched, mirrored and JPEG-compressed, all score 21 or more. All 8,349 Seraphim test images score 0 or less, and 432 checked by eye hold no Anti-UAV frame, so none were dropped (`docs/benchmarks/drone-transfer-sets.md`, #45).
+
+**Gotcha:** the check only knows the forms you tested. Rotated, sheared or cropped copies (Roboflow augmentations) and Anti-UAV's infrared overlay would pass. The by-eye sample bounds what slipped through (0 of 384 random images: under about 1% at 95% confidence by the rule of three), but doesn't make it zero.
+
+### Pre-registered targets (set before test, not from the val score)
+A pass/fail bar written down before the test run, with a reason for each number. If a target is set after seeing the result, or just under a tuned val score, the test can't fail, so passing it shows nothing. The reason has to come from outside the val score: what the rest of the system needs, an existing rule, a reference model, or what the sample can resolve.
+
+**In Tether:** the drone milestone's accuracy targets were set in #47 from val, before any drone model touched Anti-UAV test, Seraphim or the bird images ([ADR 0004](adr/0004-drone-detector-on-anti-uav.md#accuracy-targets-47)). None of them sits near its val score. Val had recall 0.992; the target is ≥ 0.80, the 20% miss rate the tracker's dropout test already specifies. End-to-end ID kept must be ≥ 0.95 × the labeled-box row on the same test clips, the dropout test's own relative rule. Seraphim must beat the COCO model the drone model was fine-tuned from (AP50 0.216), not an absolute number. Tiny and small recall, with 20 val boxes, has no target at all.
+
+On test (#48) recall and precision passed, and ID kept, birds, empty sky and Seraphim failed. The misses are reported as misses, with nothing re-tuned (`docs/benchmarks/drone-test.md`).
+
+**Gotcha:** a target is only as sharp as the sample's resolution. 86 bird images make one image 1.2 points, and 2.25 minutes of empty sky make one false detection 0.44 per minute. So those two rows are coarse bars (≤ 8 images, ≤ 4 detections) that catch only a gross failure. Write the resolution down beside the bar, and say "report only" when the sample can't carry a pass/fail.
 
 ---
 
@@ -263,6 +335,13 @@ What TensorRT turns an ONNX model into: a compiled plan (`.engine` or `.plan` fi
 In Tether: built once per machine and input size with `trtexec --onnx=models/yolo26n_1280x736.onnx --saveEngine=models/yolo26n_1280x736.engine --noTF32` (the shipped model; `yolo26n.onnx`, the 640 model, the same way), and loaded from next to the model (README, "TensorRT runtime").
 
 Gotcha: an engine is tied to the GPU model, the TensorRT version and the input size it was built with. That's why engines stay out of git, and why each model × input size needs its own. An engine from another TensorRT version is refused when it loads (`tether-pipeline` then says to rebuild it); one built on a different GPU may load with only a warning, so treat engines as per-machine build output.
+
+### Model metadata (class names travel with the model)
+An ONNX file can carry key-value text next to its weights. Ultralytics writes the class names there as a Python dict literal, `names: "{0: 'person', 1: 'bicycle', ...}"`, so a program can name what the model detects without its own table. A TensorRT engine is compiled output and keeps none of it.
+
+**In Tether:** the C++ stats panel used to name every class from a hard-coded COCO table, so the one-class drone model's class 0 showed as "person". Since #46 both pipelines take names from `--class-names` if given, else from the `.onnx` file's metadata (read beside the engine on TensorRT too), else COCO's table. The drone model gives "drone"; the COCO models carry COCO's names in their own metadata, so their panel is unchanged. `tools/drone_breakdown.py` reads them from the model its dump's `dump.json` names (`cpp/src/tether/class_names.hpp`, `python/tether/class_names.py`).
+
+**Gotcha:** the class *ID* is all the detector and tracker see, and a detection file stores only that. A name table is a guess about which model wrote the file. Reading it from the model keeps a drone model's 0 from being read as COCO's 0. A run that has only the engine (or `--model X.engine`) needs `--class-names`, or the panel falls back to COCO, and `tether-pipeline` says so when it starts. The Python pipeline draws IDs only, so on the Python side the names matter only to the tools that report classes.
 
 ### Strongly typed network (precision from the model)
 TensorRT 11 takes each layer's precision from the model's own types, instead of picking lower precision on its own (`trtexec` no longer has `--fp16`). A float32 ONNX model gives a float32 engine. TF32, a float32 mode of the GPU's matrix units that keeps fewer mantissa bits, is allowed by default (`--noTF32` turns it off).
@@ -302,9 +381,16 @@ Two separate choices. The **benchmark detection set** is what a tracker comparis
 ### Fine-tuning
 Starting from a model already trained on a big general dataset and training it a little further on your own data, instead of training from scratch. It keeps what the model already knows about edges, shapes and objects, so a few thousand frames can be enough.
 
-**In Tether:** the drone detector is YOLO26n, pretrained on COCO, fine-tuned on Anti-UAV with a single class, "drone" (ADR 0004). It's a separate model beside the COCO one, picked with `--model`.
+**In Tether:** the drone detector is YOLO26n, pretrained on COCO, fine-tuned on Anti-UAV with a single class, "drone" (ADR 0004). It's a separate model beside the COCO one, `models/yolo26n_drone_1280x736.onnx`, picked with `--model`. 17,227 frames (every 10th) and 20 epochs (3.39 h on the laptop GPU) took val AP50 from 0.228 to 0.995, and one epoch already reached 0.946 (`docs/benchmarks/drone-model.md`, #43).
 
-**Gotcha:** fine-tuning on new classes alone makes the model forget its old ones ("catastrophic forgetting"). That's why the drone model doesn't replace the COCO model: keeping people *and* drones in one model would mean mixing COCO images back into training and re-running every MOT17 number.
+**Gotcha:** fine-tuning on new classes alone makes the model forget its old ones ("catastrophic forgetting"). That's why the drone model doesn't replace the COCO model: keeping people *and* drones in one model would mean mixing COCO images back into training and re-running every MOT17 number. It can also narrow the new class to what the training set's examples look like. On Seraphim the drone model finds 3.2% of the large drones (all 15 missed ones looked at are close-ups and product shots), where the class-agnostic COCO model found 34.0% at 0.25 (`docs/benchmarks/drone-test.md`, #48). Fine-tuning on one site's distant drones made the model worse than its starting point on drones that look different.
+
+### Checkpoint selection (and a saturated metric)
+Training saves a model after every epoch, and you have to pick which one to ship. The usual way is the epoch with the best score on val, using the metric you'll report, with the rule fixed before you look at the scores so the choice can't follow the noise.
+
+**In Tether:** Ultralytics' own val mAP50 (stride-10 val images, a 1280 square) flattened at 0.994–0.995 from epoch 7 on, so it couldn't separate the late epochs. It only shortlisted them: its top three plus the last were exported, run on TensorRT over every val frame, and scored with `tether-drone-score`, and the highest AP50 shipped. Its top three were cut through a tie at the fifth decimal, so the three epochs tied at the cut were scored too. Epoch 19 won by 0.00008 over epoch 20, a tie in practice (`docs/benchmarks/drone-model.md`, #43).
+
+**Gotcha:** a metric at its ceiling looks like a result but can't make a choice. When the candidates sit within the val's noise, any rule picks one arbitrarily, so say "tied" rather than "best". And a library's built-in val metric is computed its own way: images, resizing and score floor all differ from the scorer you report with.
 
 ### GPU containers (NVIDIA Container Toolkit)
 A Docker container normally can't see the GPU. The NVIDIA Container Toolkit adds a runtime that, when you pass `docker run --gpus all`, mounts the host's GPU devices and driver libraries into the container. The container brings its own CUDA toolkit and TensorRT; only the **driver** comes from the host, so the host driver just has to be new enough for the container's CUDA version. NVIDIA publishes ready images (`nvcr.io/nvidia/tensorrt`) with CUDA, TensorRT and `trtexec` installed.
@@ -521,6 +607,13 @@ Up to Python 3.13, the type annotations on a function are evaluated when the `de
 **In Tether:** `tracker.py` annotated a `Tracker` method with `_Matcher`, an alias defined below the class. The laptop runs 3.14, so all 324 tests passed; the Docker image's Python 3.12 couldn't import the tracker at all, though `pyproject.toml` promises 3.10+. The alias now sits above the class (#19).
 
 **Gotcha:** "the tests pass" only covers the interpreter they ran on. Running them in the image now covers 3.12 as well as the laptop's 3.14, but 3.10 and 3.11, which `pyproject.toml` also claims, are still untested.
+
+### Mutation testing (and equivalent mutants)
+Checking the tests rather than the code: break the code on purpose in one small, targeted way (a `>=` turned into `>`, a check deleted) and see whether some test fails. A mutation no test catches points to a test that doesn't guard what it claims to.
+
+**In Tether:** each issue's `docs/spec-verify/issue-<n>.md` lists one mutation per acceptance criterion, run one at a time, with the file restored and byte-compared before the next. For the drone scorer (#42), 25 of 26 mutations were caught (`docs/spec-verify/issue-42.md`).
+
+**Gotcha:** a surviving mutant isn't always a gap. An *equivalent mutant* changes the code without changing what it computes. In #42, cutting the precision-recall curve once per detection instead of once per distinct score survived, because the counts were already taken with `searchsorted` and repeated cuts add zero area. Explain a survivor before writing a test to kill it.
 
 ### Tracer bullet / vertical slice
 Building a thin piece of functionality that works end to end, all the way through every layer, instead of finishing one layer at a time. You get something working early, and integration problems show up early.
